@@ -1,0 +1,11 @@
+/*
+ * Minimal config_components.h for standalone ffplay.c.
+ * RTSP demuxer and MMSH protocol match gyan full_build and ffplay.c #if blocks.
+ */
+#ifndef FFPLAY_CONFIG_COMPONENTS_H
+#define FFPLAY_CONFIG_COMPONENTS_H
+
+#define CONFIG_RTSP_DEMUXER 1
+#define CONFIG_MMSH_PROTOCOL 1
+
+#endif /* FFPLAY_CONFIG_COMPONENTS_H */
