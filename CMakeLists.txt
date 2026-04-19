@@ -96,7 +96,6 @@ endif()
 set(_ffplay_target ffplay)
 add_executable(${_ffplay_target}
   src/ffplay.c
-  src/ffplay_renderer.c
   src/cmdutils.c
   src/opt_common.c)
 target_include_directories(${_ffplay_target} PRIVATE

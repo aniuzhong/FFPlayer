@@ -56,8 +56,21 @@
 #include <SDL_thread.h>
 
 #include "cmdutils.h"
-#include "ffplay_renderer.h"
 #include "opt_common.h"
+
+#define VIDEO_BACKGROUND_TILE_SIZE 64
+
+enum VideoBackgroundType {
+    VIDEO_BACKGROUND_TILES,
+    VIDEO_BACKGROUND_COLOR,
+    VIDEO_BACKGROUND_NONE,
+};
+
+typedef struct RenderParams {
+    SDL_Rect target_rect;
+    uint8_t video_background_color[4];
+    enum VideoBackgroundType video_background_type;
+} RenderParams;
 
 const char program_name[] = "ffplay";
 const int program_birth_year = 2003;
@@ -350,8 +363,6 @@ static char *afilters = NULL;
 static int autorotate = 1;
 static int find_stream_info = 1;
 static int filter_nbthreads = 0;
-static int enable_vulkan = 0;
-static char *vulkan_params = NULL;
 static char *video_background = NULL;
 static const char *hwaccel = NULL;
 
@@ -365,8 +376,6 @@ static SDL_Window *window;
 static SDL_Renderer *renderer;
 static SDL_RendererInfo renderer_info = {0};
 static SDL_AudioDeviceID audio_dev;
-
-static VkRenderer *vk_renderer;
 
 static const struct TextureFormatEntry {
     enum AVPixelFormat format;
@@ -1010,10 +1019,6 @@ static void video_image_display(VideoState *is)
 
     vp = frame_queue_peek_last(&is->pictq);
     calculate_display_rect(rect, is->xleft, is->ytop, is->width, is->height, vp->width, vp->height, vp->sar);
-    if (vk_renderer) {
-        vk_renderer_display(vk_renderer, vp->frame, &is->render_params);
-        return;
-    }
 
     if (is->subtitle_st) {
         if (frame_queue_nb_remaining(&is->subpq) > 0) {
@@ -1350,8 +1355,6 @@ static void do_exit(VideoState *is)
     }
     if (renderer)
         SDL_DestroyRenderer(renderer);
-    if (vk_renderer)
-        vk_renderer_destroy(vk_renderer);
     if (window)
         SDL_DestroyWindow(window);
     uninit_opts();
@@ -1972,8 +1975,7 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
     if ((ret = av_opt_set_array(filt_out, "pixel_formats", AV_OPT_SEARCH_CHILDREN,
                                 0, nb_pix_fmts, AV_OPT_TYPE_PIXEL_FMT, pix_fmts)) < 0)
         goto fail;
-    if (!vk_renderer &&
-        (ret = av_opt_set_array(filt_out, "colorspaces", AV_OPT_SEARCH_CHILDREN,
+    if ((ret = av_opt_set_array(filt_out, "colorspaces", AV_OPT_SEARCH_CHILDREN,
                                 0, FF_ARRAY_ELEMS(sdl_supported_color_spaces),
                                 AV_OPT_TYPE_INT, sdl_supported_color_spaces)) < 0)
         goto fail;
@@ -2651,8 +2653,6 @@ static int audio_open(void *opaque, AVChannelLayout *wanted_channel_layout, int 
 static int create_hwaccel(AVBufferRef **device_ctx)
 {
     enum AVHWDeviceType type;
-    int ret;
-    AVBufferRef *vk_dev;
 
     *device_ctx = NULL;
 
@@ -2663,25 +2663,7 @@ static int create_hwaccel(AVBufferRef **device_ctx)
     if (type == AV_HWDEVICE_TYPE_NONE)
         return AVERROR(ENOTSUP);
 
-    if (!vk_renderer) {
-        av_log(NULL, AV_LOG_ERROR, "Vulkan renderer is not available\n");
-        return AVERROR(ENOTSUP);
-    }
-
-    ret = vk_renderer_get_hw_dev(vk_renderer, &vk_dev);
-    if (ret < 0)
-        return ret;
-
-    ret = av_hwdevice_ctx_create_derived(device_ctx, type, vk_dev, 0);
-    if (!ret)
-        return 0;
-
-    if (ret != AVERROR(ENOSYS))
-        return ret;
-
-    av_log(NULL, AV_LOG_WARNING, "Derive %s from vulkan not supported.\n", hwaccel);
-    ret = av_hwdevice_ctx_create(device_ctx, type, NULL, NULL, 0);
-    return ret;
+    return av_hwdevice_ctx_create(device_ctx, type, NULL, NULL, 0);
 }
 
 /* open a given stream. Return 0 if OK */
@@ -3616,8 +3598,6 @@ static void event_loop(VideoState *cur_stream)
                         SDL_DestroyTexture(cur_stream->vis_texture);
                         cur_stream->vis_texture = NULL;
                     }
-                    if (vk_renderer)
-                        vk_renderer_resize(vk_renderer, screen_width, screen_height);
                 case SDL_WINDOWEVENT_EXPOSED:
                     cur_stream->force_refresh = 1;
             }
@@ -3789,8 +3769,6 @@ static const OptionDef options[] = {
     { "find_stream_info",   OPT_TYPE_BOOL, OPT_INPUT | OPT_EXPERT, { &find_stream_info },
         "read and decode the streams to fill missing information with heuristics" },
     { "filter_threads",     OPT_TYPE_INT,    OPT_EXPERT, { &filter_nbthreads }, "number of filter threads per graph" },
-    { "enable_vulkan",      OPT_TYPE_BOOL,            0, { &enable_vulkan }, "enable vulkan renderer" },
-    { "vulkan_params",      OPT_TYPE_STRING, OPT_EXPERT, { &vulkan_params }, "vulkan configuration using a list of key=value pairs separated by ':'" },
     { "video_bg",           OPT_TYPE_STRING, OPT_EXPERT, { &video_background }, "set video background for transparent videos" },
     { "hwaccel",            OPT_TYPE_STRING, OPT_EXPERT, { &hwaccel }, "use HW accelerated decoding" },
     { NULL, },
@@ -3907,21 +3885,6 @@ int main(int argc, char **argv)
 #ifdef SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR
         SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 #endif
-        if (hwaccel && !enable_vulkan) {
-            av_log(NULL, AV_LOG_INFO, "Enable vulkan renderer to support hwaccel %s\n", hwaccel);
-            enable_vulkan = 1;
-        }
-        if (enable_vulkan) {
-            vk_renderer = vk_get_renderer();
-            if (vk_renderer) {
-#if SDL_VERSION_ATLEAST(2, 0, 6)
-                flags |= SDL_WINDOW_VULKAN;
-#endif
-            } else {
-                av_log(NULL, AV_LOG_WARNING, "Doesn't support vulkan renderer, fallback to SDL renderer\n");
-                enable_vulkan = 0;
-            }
-        }
         window = SDL_CreateWindow(program_name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, default_width, default_height, flags);
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
         if (!window) {
@@ -3929,36 +3892,18 @@ int main(int argc, char **argv)
             do_exit(NULL);
         }
 
-        if (vk_renderer) {
-            AVDictionary *dict = NULL;
-
-            if (vulkan_params) {
-                int ret = av_dict_parse_string(&dict, vulkan_params, "=", ":", 0);
-                if (ret < 0) {
-                    av_log(NULL, AV_LOG_FATAL, "Failed to parse, %s\n", vulkan_params);
-                    do_exit(NULL);
-                }
-            }
-            ret = vk_renderer_create(vk_renderer, window, dict);
-            av_dict_free(&dict);
-            if (ret < 0) {
-                av_log(NULL, AV_LOG_FATAL, "Failed to create vulkan renderer, %s\n", av_err2str(ret));
-                do_exit(NULL);
-            }
-        } else {
-            renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-            if (!renderer) {
-                av_log(NULL, AV_LOG_WARNING, "Failed to initialize a hardware accelerated renderer: %s\n", SDL_GetError());
-                renderer = SDL_CreateRenderer(window, -1, 0);
-            }
-            if (renderer) {
-                if (!SDL_GetRendererInfo(renderer, &renderer_info))
-                    av_log(NULL, AV_LOG_VERBOSE, "Initialized %s renderer.\n", renderer_info.name);
-            }
-            if (!renderer || !renderer_info.num_texture_formats) {
-                av_log(NULL, AV_LOG_FATAL, "Failed to create window or renderer: %s", SDL_GetError());
-                do_exit(NULL);
-            }
+        renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+        if (!renderer) {
+            av_log(NULL, AV_LOG_WARNING, "Failed to initialize a hardware accelerated renderer: %s\n", SDL_GetError());
+            renderer = SDL_CreateRenderer(window, -1, 0);
+        }
+        if (renderer) {
+            if (!SDL_GetRendererInfo(renderer, &renderer_info))
+                av_log(NULL, AV_LOG_VERBOSE, "Initialized %s renderer.\n", renderer_info.name);
+        }
+        if (!renderer || !renderer_info.num_texture_formats) {
+            av_log(NULL, AV_LOG_FATAL, "Failed to create window or renderer: %s", SDL_GetError());
+            do_exit(NULL);
         }
     }
 
