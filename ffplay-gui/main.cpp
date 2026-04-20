@@ -254,13 +254,35 @@ private:
             if (ImGui::Button("Open file..."))
                 open_file_dialog_and_play();
         } else {
+            float avail_w = ImGui::GetContentRegionAvail().x;
+            float play_w = ImGui::CalcTextSize(play_text.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+            float time_w = ImGui::CalcTextSize(time_text.c_str()).x;
+            float volume_w = FFMIN(110.0f, FFMAX(72.0f, avail_w * 0.22f));
+            float min_timeline_w = 80.0f;
+            bool hide_time_text = false;
+            float needed_w = play_w + margin + time_w + margin + min_timeline_w + margin + volume_w;
+
+            if (avail_w < needed_w) {
+                hide_time_text = true;
+                needed_w = play_w + margin + min_timeline_w + margin + volume_w;
+            }
+            if (avail_w < needed_w) {
+                volume_w = FFMAX(58.0f, avail_w * 0.18f);
+            }
+
+            float timeline_w = FFMAX(
+                min_timeline_w,
+                avail_w - play_w - margin - (hide_time_text ? 0.0f : (time_w + margin)) - margin - volume_w);
+
             if (ImGui::Button(play_text.c_str()))
                 stream_toggle_pause_and_clear_step(stream_);
-            ImGui::SameLine();
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextUnformatted(time_text.c_str());
+            if (!hide_time_text) {
+                ImGui::SameLine(0.0f, margin);
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextUnformatted(time_text.c_str());
+            }
             ImGui::SameLine(0.0f, margin);
-            ImGui::SetNextItemWidth(FFMAX(120.0f, io.DisplaySize.x - 392.0f));
+            ImGui::SetNextItemWidth(timeline_w);
             float slider_value = pending_seek_ratio_ >= 0.0f ? pending_seek_ratio_ : progress;
             if (!can_seek)
                 ImGui::BeginDisabled();
@@ -283,10 +305,9 @@ private:
             if (!can_seek)
                 ImGui::EndDisabled();
             ImGui::SameLine(0.0f, margin);
-            ImGui::Dummy(ImVec2(6.0f, 0.0f));
-            ImGui::SameLine(0.0f, 0.0f);
-            ImGui::SetNextItemWidth(96.0f);
-            if (ImGui::SliderFloat("##volume", &volume_percent, 0.0f, 100.0f, "%.0f%%")) {
+            ImGui::SetNextItemWidth(volume_w);
+            const char *volume_fmt = volume_w >= 72.0f ? "%.0f%%" : "";
+            if (ImGui::SliderFloat("##volume", &volume_percent, 0.0f, 100.0f, volume_fmt)) {
                 stream_->audio_volume = av_clip((int)((volume_percent / 100.0f) * SDL_MIX_MAXVOLUME), 0, SDL_MIX_MAXVOLUME);
             }
         }
