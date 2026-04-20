@@ -102,7 +102,7 @@ public:
         init_window_and_renderer();
         configure_video_renderer();
         SDL_ShowWindow(window_);
-        SDL_SetWindowTitle(window_, "ffplay-gui - No media loaded (Press O to Open)");
+        SDL_SetWindowTitle(window_, "ffplay-gui - No media loaded");
 
         audio_device_set_open_cb(&audio_device_, audio_pipeline_open);
         init_imgui();
@@ -170,7 +170,7 @@ private:
             SDL_SetWindowTitle(window_, title ? title : "ffplay-gui");
             return;
         }
-        SDL_SetWindowTitle(window_, "ffplay-gui - No media loaded (Press O to Open)");
+        SDL_SetWindowTitle(window_, "ffplay-gui - No media loaded");
     }
 
     void seek_to_ratio(float ratio)
@@ -619,10 +619,6 @@ do_seek:
             case SDL_MOUSEBUTTONDOWN:
                 if (ImGui::GetIO().WantCaptureMouse)
                     break;
-                if (!stream_ && event.button.button == SDL_BUTTON_LEFT) {
-                    open_file_dialog_and_play();
-                    break;
-                }
                 if (event.button.button == SDL_BUTTON_LEFT) {
                     static int64_t last_mouse_left_click = 0;
                     if (av_gettime_relative() - last_mouse_left_click <= 500000) {
