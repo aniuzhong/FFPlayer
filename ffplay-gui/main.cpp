@@ -124,6 +124,8 @@ private:
     bool imgui_ready_ = false;
     float pending_seek_ratio_ = -1.0f;
     int64_t last_drag_seek_us_ = 0;
+    float stable_progress_ratio_ = 0.0f;
+    bool stable_progress_ready_ = false;
 
     static std::string format_duration(double seconds)
     {
@@ -207,6 +209,7 @@ private:
         bool has_known_duration = false;
         bool can_approx_seek = false;
         bool can_seek = false;
+        bool using_stable_progress = false;
 
         ImGui_ImplSDLRenderer2_NewFrame();
         ImGui_ImplSDL2_NewFrame();
@@ -220,10 +223,24 @@ private:
             if (has_known_duration) {
                 duration_sec = stream_->ic->duration / (double)AV_TIME_BASE;
                 current_sec = get_master_clock(stream_);
+                if (isnan(current_sec))
+                    current_sec = 0.0;
                 if (stream_->ic->start_time != AV_NOPTS_VALUE)
                     current_sec -= stream_->ic->start_time / (double)AV_TIME_BASE;
                 current_sec = FFMAX(0.0, FFMIN(current_sec, duration_sec));
                 progress = duration_sec > 0.0 ? (float)(current_sec / duration_sec) : 0.0f;
+
+                /*
+                 * Some short clips report container duration slightly longer than
+                 * decodable payload duration. At EOF, snap near-tail progress to 100%
+                 * so the thumb reaches the right edge instead of stopping around 4.x/5s.
+                 */
+                if (stream_->eof && progress > 0.90f)
+                    progress = 1.0f;
+
+                if (!isfinite(progress))
+                    progress = 0.0f;
+                using_stable_progress = true;
                 time_text = format_duration(current_sec) + " / " + format_duration(duration_sec);
             } else if (can_approx_seek) {
                 int64_t size = avio_size(stream_->ic->pb);
@@ -237,6 +254,26 @@ private:
 
             play_text = stream_->paused ? "Play" : "Pause";
         }
+        if (!stream_)
+            stable_progress_ready_ = false;
+
+        if (using_stable_progress && pending_seek_ratio_ < 0.0f) {
+            if (!stable_progress_ready_) {
+                stable_progress_ratio_ = progress;
+                stable_progress_ready_ = true;
+            } else {
+                float delta = progress - stable_progress_ratio_;
+                if (delta >= -0.003f) {
+                    stable_progress_ratio_ = FFMAX(stable_progress_ratio_, progress);
+                } else if (delta <= -0.08f) {
+                    /* Accept large backward jumps (explicit seek / restart). */
+                    stable_progress_ratio_ = progress;
+                }
+            }
+            progress = stable_progress_ratio_;
+        }
+        if (!isfinite(progress))
+            progress = 0.0f;
         if (stream_)
             volume_percent = 100.0f * (float)stream_->audio_volume / (float)SDL_MIX_MAXVOLUME;
 
@@ -299,6 +336,8 @@ private:
             }
             if (pending_seek_ratio_ >= 0.0f && ImGui::IsItemDeactivatedAfterEdit()) {
                 seek_to_ratio(pending_seek_ratio_);
+                stable_progress_ratio_ = pending_seek_ratio_;
+                stable_progress_ready_ = true;
                 pending_seek_ratio_ = -1.0f;
                 last_drag_seek_us_ = 0;
             }
@@ -360,6 +399,7 @@ private:
             stream_close(stream_);
             stream_ = NULL;
         }
+        stable_progress_ready_ = false;
 
         stream_ = stream_open(utf8_path.data(), &audio_device_, &video_renderer_ctx_, NULL);
         if (!stream_) {
@@ -369,6 +409,8 @@ private:
             return false;
         }
         stream_->force_refresh = 1;
+        stable_progress_ratio_ = 0.0f;
+        stable_progress_ready_ = false;
 
         refresh_window_title();
         open_dialog_active_ = false;
