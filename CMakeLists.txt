@@ -158,6 +158,27 @@ add_executable(${_ffplay_gui_target} WIN32
   ffplay-gui/packet_queue.c
   ffplay-gui/frame_queue.c
   ffplay-gui/decoder.c)
+
+set(_ffplay_gui_default_icon "ffplay-gui/icon/icons8-ffmpeg-48.ico")
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/${_ffplay_gui_default_icon}")
+  set(_ffplay_gui_default_icon "")
+endif()
+set(FFPLAY_GUI_ICON "${_ffplay_gui_default_icon}" CACHE FILEPATH
+  "Path to a .ico file embedded into ffplay-gui.exe on Windows")
+if(WIN32 AND FFPLAY_GUI_ICON)
+  get_filename_component(_ffplay_gui_icon_abs "${FFPLAY_GUI_ICON}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
+  if(EXISTS "${_ffplay_gui_icon_abs}")
+    string(REPLACE "/" "\\\\" _ffplay_gui_icon_rc_path "${_ffplay_gui_icon_abs}")
+    set(_ffplay_gui_icon_rc "${FFPLAY_GEN_DIR}/ffplay-gui-icon.rc")
+    file(WRITE "${_ffplay_gui_icon_rc}" "IDI_APP_ICON ICON \"${_ffplay_gui_icon_rc_path}\"\n")
+    target_sources(${_ffplay_gui_target} PRIVATE "${_ffplay_gui_icon_rc}")
+  else()
+    message(WARNING
+      "FFPLAY_GUI_ICON was set to '${FFPLAY_GUI_ICON}', but resolved file "
+      "'${_ffplay_gui_icon_abs}' does not exist. Icon will not be embedded.")
+  endif()
+endif()
+
 set_target_properties(${_ffplay_gui_target} PROPERTIES
   OUTPUT_NAME "ffplay-gui"
   CXX_STANDARD 20)
