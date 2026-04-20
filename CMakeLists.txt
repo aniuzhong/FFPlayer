@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(FFPlayer C CXX)
 
 set(CMAKE_C_STANDARD 99)
+include(FetchContent)
 
 set(THIRD_PARTY_DIR "${CMAKE_SOURCE_DIR}/third_party" CACHE PATH "Root directory for bundled third-party packages")
 set(FFMPEG_PREBUILT_ROOT "${THIRD_PARTY_DIR}/ffmpeg-8.1-full_build-shared" CACHE PATH
@@ -138,5 +139,82 @@ if(WIN32)
     message(WARNING
       "Directory ${FFMPEG_PREBUILT_ROOT}/bin not found; FFmpeg DLLs were not copied. "
       "Add gyan bin to PATH or copy DLLs next to ffplay.exe before running.")
+  endif()
+endif()
+
+set(_ffplay_gui_target ffplay-gui)
+add_executable(${_ffplay_gui_target} WIN32
+  ffplay-gui/main.cpp
+  ffplay-gui/audio_device.c
+  ffplay-gui/audio_pipeline.c
+  ffplay-gui/audio_thread.c
+  ffplay-gui/video_thread.c
+  ffplay-gui/video_renderer.c
+  ffplay-gui/subtitle_thread.c
+  ffplay-gui/demuxer.c
+  ffplay-gui/clock.c
+  ffplay-gui/filter.c
+  ffplay-gui/stream.c
+  ffplay-gui/packet_queue.c
+  ffplay-gui/frame_queue.c
+  ffplay-gui/decoder.c)
+set_target_properties(${_ffplay_gui_target} PROPERTIES
+  OUTPUT_NAME "ffplay-gui"
+  CXX_STANDARD 20)
+target_include_directories(${_ffplay_gui_target} PRIVATE
+  "${FFPLAY_GEN_DIR}"
+  "${CMAKE_SOURCE_DIR}/src/shim/include"
+  "${CMAKE_SOURCE_DIR}/src"
+  "${CMAKE_SOURCE_DIR}/ffplay-gui"
+  "${FFMPEG_PREBUILT_ROOT}/include")
+
+set(IMGUI_BUILD_DIR "${CMAKE_BINARY_DIR}/_deps/imgui-src")
+if(NOT EXISTS "${IMGUI_BUILD_DIR}/imgui.h")
+  FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG v1.91.9b
+  )
+  FetchContent_MakeAvailable(imgui)
+endif()
+
+target_sources(${_ffplay_gui_target} PRIVATE
+  "${IMGUI_BUILD_DIR}/imgui.cpp"
+  "${IMGUI_BUILD_DIR}/imgui_draw.cpp"
+  "${IMGUI_BUILD_DIR}/imgui_tables.cpp"
+  "${IMGUI_BUILD_DIR}/imgui_widgets.cpp"
+  "${IMGUI_BUILD_DIR}/imgui_demo.cpp"
+  "${IMGUI_BUILD_DIR}/backends/imgui_impl_sdl2.cpp"
+  "${IMGUI_BUILD_DIR}/backends/imgui_impl_sdlrenderer2.cpp")
+target_include_directories(${_ffplay_gui_target} PRIVATE
+  "${IMGUI_BUILD_DIR}"
+  "${IMGUI_BUILD_DIR}/backends")
+
+if(MSVC)
+  target_compile_options(${_ffplay_gui_target} PRIVATE /utf-8)
+endif()
+
+foreach(_lib IN LISTS _ffmpeg_libnames)
+  ffplay_find_ffmpeg_lib(_ff_lib "${_lib}")
+  target_link_libraries(${_ffplay_gui_target} PRIVATE "${_ff_lib}")
+endforeach()
+
+target_link_libraries(${_ffplay_gui_target} PRIVATE SDL2::SDL2)
+
+if(WIN32)
+  target_link_libraries(${_ffplay_gui_target} PRIVATE shell32 comdlg32)
+  set(_out_gui "$<TARGET_FILE_DIR:${_ffplay_gui_target}>")
+  ffplay_resolve_sdl2_dll(_sdl_dll_gui)
+  if(_sdl_dll_gui)
+    ffplay_copy_runtime_dll("${_ffplay_gui_target}" "${_sdl_dll_gui}" "${_out_gui}")
+  else()
+    message(WARNING "SDL2.dll not found; ffplay-gui.exe may fail to start (expected under lib/x64 or lib/x86).")
+  endif()
+
+  if(EXISTS "${FFMPEG_PREBUILT_ROOT}/bin")
+    file(GLOB _gyan_dlls_gui LIST_DIRECTORIES false "${FFMPEG_PREBUILT_ROOT}/bin/*.dll")
+    foreach(_d IN LISTS _gyan_dlls_gui)
+      ffplay_copy_runtime_dll("${_ffplay_gui_target}" "${_d}" "${_out_gui}")
+    endforeach()
   endif()
 endif()

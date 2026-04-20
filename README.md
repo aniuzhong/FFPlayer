@@ -57,3 +57,9 @@ cmake --build build --config Release
 2. 相对改动前 **ffplay.c** 逻辑：`-hwaccel`(`create_hwaccel`) 不再被**必须先有 Vulkan 渲染器**的逻辑阻挡。
 
 3. 解码器内部是否仍可用 Vulkan 由 -hwaccel 与 av_hwdevice_ctx_create 决定。
+
+### feature/ffplay-imgui
+
+- 去掉原版 ffplay.exe 的命令行功能
+- 将 ffplay.c 拆分成更多的文件
+- 引入 ImGUI
