@@ -174,11 +174,16 @@ private:
     void seek_to_ratio(float ratio)
     {
         int64_t ts;
+        int64_t size;
         if (!stream_ || !stream_->ic)
             return;
         ratio = av_clipf(ratio, 0.0f, 1.0f);
         if (demuxer_get_seek_mode(stream_->demuxer) || stream_->ic->duration <= 0) {
-            uint64_t size = avio_size(stream_->ic->pb);
+            if (!stream_->ic->pb)
+                return;
+            size = avio_size(stream_->ic->pb);
+            if (size <= 0)
+                return;
             stream_seek(stream_, (int64_t)(size * ratio), 0, 1);
             return;
         }
@@ -199,19 +204,37 @@ private:
         double current_sec = 0.0;
         std::string play_text = "Play";
         std::string time_text = "00:00 / 00:00";
+        bool has_known_duration = false;
+        bool can_approx_seek = false;
+        bool can_seek = false;
 
         ImGui_ImplSDLRenderer2_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        if (stream_ && stream_->ic && stream_->ic->duration > 0) {
-            duration_sec = stream_->ic->duration / (double)AV_TIME_BASE;
-            current_sec = get_master_clock(stream_);
-            if (stream_->ic->start_time != AV_NOPTS_VALUE)
-                current_sec -= stream_->ic->start_time / (double)AV_TIME_BASE;
-            current_sec = FFMAX(0.0, FFMIN(current_sec, duration_sec));
-            progress = duration_sec > 0.0 ? (float)(current_sec / duration_sec) : 0.0f;
-            time_text = format_duration(current_sec) + " / " + format_duration(duration_sec);
+        if (stream_ && stream_->ic) {
+            has_known_duration = stream_->ic->duration > 0;
+            can_approx_seek = stream_->ic->pb && avio_size(stream_->ic->pb) > 0;
+            can_seek = has_known_duration || can_approx_seek;
+
+            if (has_known_duration) {
+                duration_sec = stream_->ic->duration / (double)AV_TIME_BASE;
+                current_sec = get_master_clock(stream_);
+                if (stream_->ic->start_time != AV_NOPTS_VALUE)
+                    current_sec -= stream_->ic->start_time / (double)AV_TIME_BASE;
+                current_sec = FFMAX(0.0, FFMIN(current_sec, duration_sec));
+                progress = duration_sec > 0.0 ? (float)(current_sec / duration_sec) : 0.0f;
+                time_text = format_duration(current_sec) + " / " + format_duration(duration_sec);
+            } else if (can_approx_seek) {
+                int64_t size = avio_size(stream_->ic->pb);
+                int64_t pos = avio_tell(stream_->ic->pb);
+                if (size > 0 && pos >= 0)
+                    progress = av_clipf((float)pos / (float)size, 0.0f, 1.0f);
+                time_text = "Unknown duration | Approx seek";
+            } else {
+                time_text = "Unknown duration";
+            }
+
             play_text = stream_->paused ? "Play" : "Pause";
         }
         if (stream_)
@@ -239,6 +262,8 @@ private:
             ImGui::SameLine(0.0f, margin);
             ImGui::SetNextItemWidth(FFMAX(120.0f, io.DisplaySize.x - 392.0f));
             float slider_value = pending_seek_ratio_ >= 0.0f ? pending_seek_ratio_ : progress;
+            if (!can_seek)
+                ImGui::BeginDisabled();
             if (ImGui::SliderFloat("##timeline", &slider_value, 0.0f, 1.0f, "")) {
                 pending_seek_ratio_ = slider_value;
                 if (ImGui::IsItemActive()) {
@@ -255,6 +280,8 @@ private:
                 pending_seek_ratio_ = -1.0f;
                 last_drag_seek_us_ = 0;
             }
+            if (!can_seek)
+                ImGui::EndDisabled();
             ImGui::SameLine(0.0f, margin);
             ImGui::Dummy(ImVec2(6.0f, 0.0f));
             ImGui::SameLine(0.0f, 0.0f);
