@@ -599,7 +599,7 @@ retry:
                 stream_toggle_pause(is);
         }
 display:
-        if (is->force_refresh && is->show_mode == SHOW_MODE_VIDEO && is->pictq.rindex_shown)
+        if (is->force_refresh && is->show_mode == SHOW_MODE_VIDEO && frame_queue_is_last_shown(&is->pictq))
             video_renderer_display(vr, is);
     }
     is->force_refresh = 0;

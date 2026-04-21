@@ -510,11 +510,11 @@ void stream_close(VideoState *is)
         packet_queue_free(&is->audioq);
     if (packet_queue_is_initialized(is->subtitleq))
         packet_queue_free(&is->subtitleq);
-    if (is->pictq.mutex && is->pictq.cond)
+    if (frame_queue_is_initialized(&is->pictq))
         frame_queue_destroy(&is->pictq);
-    if (is->sampq.mutex && is->sampq.cond)
+    if (frame_queue_is_initialized(&is->sampq))
         frame_queue_destroy(&is->sampq);
-    if (is->subpq.mutex && is->subpq.cond)
+    if (frame_queue_is_initialized(&is->subpq))
         frame_queue_destroy(&is->subpq);
     if (is->continue_read_thread)
         SDL_DestroyCond(is->continue_read_thread);

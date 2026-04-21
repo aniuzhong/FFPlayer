@@ -135,3 +135,13 @@ int64_t frame_queue_last_pos(FrameQueue *f)
     else
         return -1;
 }
+
+int frame_queue_is_initialized(const FrameQueue *f)
+{
+    return f && f->mutex && f->cond;
+}
+
+int frame_queue_is_last_shown(const FrameQueue *f)
+{
+    return f && f->rindex_shown;
+}
