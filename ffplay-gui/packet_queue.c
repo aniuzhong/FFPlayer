@@ -155,11 +155,25 @@ int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, int *serial)
 
 int packet_queue_is_aborted(PacketQueue *q)
 {
-    int aborted;
+    return q->abort_request;
+}
 
-    SDL_LockMutex(q->mutex);
-    aborted = q->abort_request;
-    SDL_UnlockMutex(q->mutex);
+int packet_queue_get_serial(PacketQueue *q)
+{
+    return q->serial;
+}
 
-    return aborted;
+int packet_queue_get_nb_packets(PacketQueue *q)
+{
+    return q->nb_packets;
+}
+
+int64_t packet_queue_get_duration(PacketQueue *q)
+{
+    return q->duration;
+}
+
+int packet_queue_is_initialized(PacketQueue *q)
+{
+    return q && q->mutex && q->cond && q->pkt_list;
 }

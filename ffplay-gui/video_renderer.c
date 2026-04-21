@@ -522,7 +522,7 @@ retry:
             lastvp = frame_queue_peek_last(&is->pictq);
             vp = frame_queue_peek(&is->pictq);
 
-            if (vp->serial != is->videoq.serial) {
+            if (vp->serial != packet_queue_get_serial(&is->videoq)) {
                 frame_queue_next(&is->pictq);
                 goto retry;
             }
@@ -569,7 +569,7 @@ retry:
                     else
                         sp2 = NULL;
 
-                    if (sp->serial != is->subtitleq.serial
+                    if (sp->serial != packet_queue_get_serial(&is->subtitleq)
                             || (is->vidclk.pts > (sp->pts + ((float) sp->sub.end_display_time / 1000)))
                             || (sp2 && is->vidclk.pts > (sp2->pts + ((float) sp2->sub.start_display_time / 1000)))) {
                         if (sp->uploaded) {

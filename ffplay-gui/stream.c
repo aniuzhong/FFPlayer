@@ -264,10 +264,13 @@ fail:
 
 int stream_has_enough_packets(AVStream *st, int stream_id, PacketQueue *queue)
 {
+    int64_t duration = packet_queue_get_duration(queue);
+
     return stream_id < 0 ||
            packet_queue_is_aborted(queue) ||
            (st->disposition & AV_DISPOSITION_ATTACHED_PIC) ||
-           queue->nb_packets > MIN_FRAMES && (!queue->duration || av_q2d(st->time_base) * queue->duration > 1.0);
+           packet_queue_get_nb_packets(queue) > MIN_FRAMES &&
+           (!duration || av_q2d(st->time_base) * duration > 1.0);
 }
 
 int is_realtime(AVFormatContext *s)
@@ -490,11 +493,11 @@ void stream_close(VideoState *is)
         stream_component_close(is, is->subtitle_stream);
 
     avformat_close_input(&is->ic);
-    if (is->videoq.mutex && is->videoq.cond && is->videoq.pkt_list)
+    if (packet_queue_is_initialized(&is->videoq))
         packet_queue_destroy(&is->videoq);
-    if (is->audioq.mutex && is->audioq.cond && is->audioq.pkt_list)
+    if (packet_queue_is_initialized(&is->audioq))
         packet_queue_destroy(&is->audioq);
-    if (is->subtitleq.mutex && is->subtitleq.cond && is->subtitleq.pkt_list)
+    if (packet_queue_is_initialized(&is->subtitleq))
         packet_queue_destroy(&is->subtitleq);
     if (is->pictq.mutex && is->pictq.cond)
         frame_queue_destroy(&is->pictq);

@@ -26,7 +26,7 @@ int decoder_decode_frame(Decoder *d, AVFrame *frame, AVSubtitle *sub)
     int ret = AVERROR(EAGAIN);
 
     for (;;) {
-        if (d->queue->serial == d->pkt_serial) {
+        if (packet_queue_get_serial(d->queue) == d->pkt_serial) {
             do {
                 if (packet_queue_is_aborted(d->queue))
                     return -1;
@@ -63,7 +63,7 @@ int decoder_decode_frame(Decoder *d, AVFrame *frame, AVSubtitle *sub)
         }
 
         do {
-            if (d->queue->nb_packets == 0)
+            if (packet_queue_get_nb_packets(d->queue) == 0)
                 SDL_CondSignal(d->empty_queue_cond);
             if (d->packet_pending) {
                 d->packet_pending = 0;
@@ -78,7 +78,7 @@ int decoder_decode_frame(Decoder *d, AVFrame *frame, AVSubtitle *sub)
                     d->next_pts_tb = d->start_pts_tb;
                 }
             }
-            if (d->queue->serial == d->pkt_serial)
+            if (packet_queue_get_serial(d->queue) == d->pkt_serial)
                 break;
             av_packet_unref(d->pkt);
         } while (1);

@@ -130,7 +130,7 @@ int frame_queue_nb_remaining(FrameQueue *f)
 int64_t frame_queue_last_pos(FrameQueue *f)
 {
     Frame *fp = &f->queue[f->rindex];
-    if (f->rindex_shown && fp->serial == f->pktq->serial)
+    if (f->rindex_shown && fp->serial == packet_queue_get_serial(f->pktq))
         return fp->pos;
     else
         return -1;
