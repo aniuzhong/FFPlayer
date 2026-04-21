@@ -19,6 +19,7 @@ void stream_adjust_volume_step(VideoState *is, int sign, double step);
 void stream_step(VideoState *is);
 void stream_seek_chapter(VideoState *is, int incr);
 void stream_seek_relative(VideoState *is, double incr_seconds);
+double stream_get_master_clock(VideoState *is);
 VideoState *stream_open(const char *filename,
                         AudioDevice *audio_device,
                         VideoRenderer *video_renderer,

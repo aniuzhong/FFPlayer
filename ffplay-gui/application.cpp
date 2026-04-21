@@ -283,7 +283,7 @@ void Application::RenderImGui()
 
         if (has_known_duration) {
             duration_sec = stream_->ic->duration / (double)AV_TIME_BASE;
-            current_sec = get_master_clock(&stream_->av_sync);
+            current_sec = stream_get_master_clock(stream_);
             if (isnan(current_sec))
                 current_sec = 0.0;
             if (stream_->ic->start_time != AV_NOPTS_VALUE)

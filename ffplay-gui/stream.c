@@ -18,6 +18,13 @@
 #define SUBPICTURE_QUEUE_SIZE 16
 #define SAMPLE_QUEUE_SIZE 9
 
+double stream_get_master_clock(VideoState *is)
+{
+    if (!is)
+        return NAN;
+    return get_master_clock(&is->av_sync);
+}
+
 void stream_seek(VideoState *is, int64_t pos, int64_t rel, int by_bytes)
 {
     if (!is->seek_req) {
@@ -132,7 +139,7 @@ void stream_seek_chapter(VideoState *is, int incr)
     if (!is || !is->ic || !is->ic->nb_chapters)
         return;
 
-    pos = get_master_clock(&is->av_sync) * AV_TIME_BASE;
+    pos = stream_get_master_clock(is) * AV_TIME_BASE;
 
     for (i = 0; i < is->ic->nb_chapters; i++) {
         AVChapter *ch = is->ic->chapters[i];
@@ -175,7 +182,7 @@ void stream_seek_relative(VideoState *is, double incr_seconds)
         pos += incr_seconds;
         stream_seek(is, (int64_t)pos, (int64_t)incr_seconds, 1);
     } else {
-        pos = get_master_clock(&is->av_sync);
+        pos = stream_get_master_clock(is);
         if (isnan(pos))
             pos = (double)is->seek_pos / AV_TIME_BASE;
         pos += incr_seconds;
