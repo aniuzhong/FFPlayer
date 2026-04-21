@@ -4,8 +4,10 @@
 
 #include "clock.h"
 #include "libavutil/common.h"
+#include "libavutil/error.h"
 #include "libavutil/log.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/time.h"
 
 void av_sync_bind(AvSync *sync,
                   Clock *audclk,
@@ -110,4 +112,19 @@ void update_video_pts(AvSync *sync, double pts, int serial)
 {
     set_clock(sync->vidclk, pts, serial);
     sync_clock_to_slave(sync->extclk, sync->vidclk);
+}
+
+void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return)
+{
+    if (*paused) {
+        *frame_timer += av_gettime_relative() / 1000000.0 - clock_get_last_updated(sync->vidclk);
+        if (read_pause_return != AVERROR(ENOSYS))
+            clock_set_paused(sync->vidclk, 0);
+        set_clock(sync->vidclk, get_clock(sync->vidclk), clock_get_serial(sync->vidclk));
+    }
+    set_clock(sync->extclk, get_clock(sync->extclk), clock_get_serial(sync->extclk));
+    *paused = !*paused;
+    clock_set_paused(sync->audclk, *paused);
+    clock_set_paused(sync->vidclk, *paused);
+    clock_set_paused(sync->extclk, *paused);
 }

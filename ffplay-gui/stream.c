@@ -33,18 +33,7 @@ void stream_seek(VideoState *is, int64_t pos, int64_t rel, int by_bytes)
 
 void stream_toggle_pause(VideoState *is)
 {
-    if (is->paused) {
-        is->frame_timer += av_gettime_relative() / 1000000.0 - clock_get_last_updated(is->vidclk);
-        if (is->read_pause_return != AVERROR(ENOSYS)) {
-            clock_set_paused(is->vidclk, 0);
-        }
-        set_clock(is->vidclk, get_clock(is->vidclk), clock_get_serial(is->vidclk));
-    }
-    set_clock(is->extclk, get_clock(is->extclk), clock_get_serial(is->extclk));
-    is->paused = !is->paused;
-    clock_set_paused(is->audclk, is->paused);
-    clock_set_paused(is->vidclk, is->paused);
-    clock_set_paused(is->extclk, is->paused);
+    av_sync_toggle_pause(&is->av_sync, &is->paused, &is->frame_timer, is->read_pause_return);
 }
 
 void stream_toggle_pause_and_clear_step(VideoState *is)
