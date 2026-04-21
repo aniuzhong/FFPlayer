@@ -545,7 +545,7 @@ bool Application::OpenFileDialogAndPlay()
         return false;
     }
     stream_toggle_pause_and_clear_step(stream_);
-    stream_toggle_mute(stream_);
+    // stream_toggle_mute(stream_);
     stream_request_refresh(stream_);
     stable_progress_ratio_ = 0.0f;
     stable_progress_ready_ = false;

@@ -6,6 +6,12 @@
 
 #include "packet_queue.h"
 
+
+typedef struct MyAVPacketList {
+    AVPacket *pkt;
+    int       serial; // Packet serial number
+} MyAVPacketList;
+
 static int packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
 {
     MyAVPacketList pkt1;
@@ -145,4 +151,15 @@ int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, int *serial)
     }
     SDL_UnlockMutex(q->mutex);
     return ret;
+}
+
+int packet_queue_is_aborted(PacketQueue *q)
+{
+    int aborted;
+
+    SDL_LockMutex(q->mutex);
+    aborted = q->abort_request;
+    SDL_UnlockMutex(q->mutex);
+
+    return aborted;
 }

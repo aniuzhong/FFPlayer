@@ -71,12 +71,12 @@ Frame *frame_queue_peek_writable(FrameQueue *f)
 {
     SDL_LockMutex(f->mutex);
     while (f->size >= f->max_size &&
-           !f->pktq->abort_request) {
+           !packet_queue_is_aborted(f->pktq)) {
         SDL_CondWait(f->cond, f->mutex);
     }
     SDL_UnlockMutex(f->mutex);
 
-    if (f->pktq->abort_request)
+    if (packet_queue_is_aborted(f->pktq))
         return NULL;
 
     return &f->queue[f->windex];
@@ -86,12 +86,12 @@ Frame *frame_queue_peek_readable(FrameQueue *f)
 {
     SDL_LockMutex(f->mutex);
     while (f->size - f->rindex_shown <= 0 &&
-           !f->pktq->abort_request) {
+           !packet_queue_is_aborted(f->pktq)) {
         SDL_CondWait(f->cond, f->mutex);
     }
     SDL_UnlockMutex(f->mutex);
 
-    if (f->pktq->abort_request)
+    if (packet_queue_is_aborted(f->pktq))
         return NULL;
 
     return &f->queue[(f->rindex + f->rindex_shown) % f->max_size];

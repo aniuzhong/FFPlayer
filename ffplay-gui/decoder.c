@@ -28,7 +28,7 @@ int decoder_decode_frame(Decoder *d, AVFrame *frame, AVSubtitle *sub)
     for (;;) {
         if (d->queue->serial == d->pkt_serial) {
             do {
-                if (d->queue->abort_request)
+                if (packet_queue_is_aborted(d->queue))
                     return -1;
 
                 switch (d->avctx->codec_type) {
