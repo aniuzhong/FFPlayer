@@ -571,8 +571,8 @@ retry:
                         sp2 = NULL;
 
                     if (sp->serial != packet_queue_get_serial(is->subtitleq)
-                            || (is->vidclk.pts > (sp->pts + ((float) sp->sub.end_display_time / 1000)))
-                            || (sp2 && is->vidclk.pts > (sp2->pts + ((float) sp2->sub.start_display_time / 1000)))) {
+                            || (clock_get_pts(&is->vidclk) > (sp->pts + ((float) sp->sub.end_display_time / 1000)))
+                            || (sp2 && clock_get_pts(&is->vidclk) > (sp2->pts + ((float) sp2->sub.start_display_time / 1000)))) {
                         if (sp->uploaded) {
                             int i;
                             for (i = 0; i < sp->sub.num_rects; i++) {

@@ -20,6 +20,36 @@ double get_clock(Clock *c)
     }
 }
 
+double clock_get_pts(const Clock *c)
+{
+    return c->pts;
+}
+
+double clock_get_last_updated(const Clock *c)
+{
+    return c->last_updated;
+}
+
+double clock_get_speed(const Clock *c)
+{
+    return c->speed;
+}
+
+int clock_get_serial(const Clock *c)
+{
+    return c->serial;
+}
+
+int clock_get_paused(const Clock *c)
+{
+    return c->paused;
+}
+
+void clock_set_paused(Clock *c, int paused)
+{
+    c->paused = paused;
+}
+
 void set_clock_at(Clock *c, double pts, int serial, double time)
 {
     c->pts = pts;
@@ -54,5 +84,5 @@ void sync_clock_to_slave(Clock *c, Clock *slave)
     double clock = get_clock(c);
     double slave_clock = get_clock(slave);
     if (!isnan(slave_clock) && (isnan(clock) || fabs(clock - slave_clock) > CLOCK_NOSYNC_THRESHOLD))
-        set_clock(c, slave_clock, slave->serial);
+        set_clock(c, slave_clock, clock_get_serial(slave));
 }

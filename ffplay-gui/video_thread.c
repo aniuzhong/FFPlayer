@@ -60,7 +60,7 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
                 double diff = dpts - get_master_clock(is);
                 if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD &&
                     diff - is->frame_last_filter_delay < 0 &&
-                    is->viddec.pkt_serial == is->vidclk.serial &&
+                    is->viddec.pkt_serial == clock_get_serial(&is->vidclk) &&
                     packet_queue_get_nb_packets(is->videoq)) {
                     is->frame_drops_early++;
                     av_frame_unref(frame);
