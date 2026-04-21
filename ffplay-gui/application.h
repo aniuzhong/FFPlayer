@@ -32,6 +32,11 @@ private:
     int64_t last_drag_seek_us_ = 0;
     float stable_progress_ratio_ = 0.0f;
     bool stable_progress_ready_ = false;
+    bool show_log_panel_ = false;
+    float log_panel_width_ = 420.0f;
+    bool log_auto_scroll_ = true;
+    bool log_wrap_lines_ = true;
+    int log_level_filter_ = 0;
 
     static std::string FormatDuration(double seconds);
 
@@ -40,6 +45,7 @@ private:
     void RefreshWindowTitle();
     void SeekToRatio(float ratio);
     void RenderImGui();
+    void RenderLogPanel(float bar_height);
     bool OpenFileDialogAndPlay();
     [[noreturn]] void DoExit(VideoState *is);
     void ToggleFullScreen();

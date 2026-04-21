@@ -4,6 +4,10 @@
 #include <limits.h>
 #include <signal.h>
 #include <stdio.h>
+#include <atomic>
+#include <deque>
+#include <mutex>
+#include <memory>
 #include <vector>
 
 extern "C" {
@@ -18,6 +22,9 @@ extern "C" {
 #include "imgui.h"
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_sdlrenderer2.h"
+#include "spdlog/logger.h"
+#include "spdlog/sinks/base_sink.h"
+#include "spdlog/spdlog.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -43,6 +50,99 @@ static constexpr int kInitialDefaultWidth = 640;
 static constexpr int kInitialDefaultHeight = 480;
 static constexpr float kSeekIntervalSeconds = 10.0f;
 static constexpr double kDefaultRdftSpeed = 0.02;
+static constexpr size_t kMaxLogLines = 2000;
+
+namespace {
+struct UiLogLine {
+    spdlog::level::level_enum level;
+    std::string text;
+};
+
+class ImGuiLogSink : public spdlog::sinks::base_sink<std::mutex> {
+public:
+    std::vector<UiLogLine> Snapshot()
+    {
+        std::lock_guard<std::mutex> lock(base_sink<std::mutex>::mutex_);
+        return std::vector<UiLogLine>(lines_.begin(), lines_.end());
+    }
+
+    void Clear()
+    {
+        std::lock_guard<std::mutex> lock(base_sink<std::mutex>::mutex_);
+        lines_.clear();
+    }
+
+private:
+    void sink_it_(const spdlog::details::log_msg &msg) override
+    {
+        spdlog::memory_buf_t buffer;
+        base_sink<std::mutex>::formatter_->format(msg, buffer);
+        lines_.push_back({msg.level, std::string(buffer.data(), buffer.size())});
+        if (lines_.size() > kMaxLogLines)
+            lines_.pop_front();
+    }
+
+    void flush_() override {}
+
+    std::deque<UiLogLine> lines_;
+};
+
+static std::shared_ptr<ImGuiLogSink> g_log_sink;
+static std::shared_ptr<spdlog::logger> g_ui_logger;
+
+static void InitUiLogger()
+{
+    if (g_ui_logger)
+        return;
+
+    g_log_sink = std::make_shared<ImGuiLogSink>();
+    g_ui_logger = std::make_shared<spdlog::logger>("ffplay_gui_ui", g_log_sink);
+    g_ui_logger->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
+    g_ui_logger->set_level(spdlog::level::trace);
+    spdlog::register_logger(g_ui_logger);
+}
+
+static void ShutdownUiLogger()
+{
+    if (!g_ui_logger)
+        return;
+    av_log_set_callback(av_log_default_callback);
+    spdlog::drop("ffplay_gui_ui");
+    g_ui_logger.reset();
+    g_log_sink.reset();
+}
+
+static spdlog::level::level_enum AvLevelToSpdLevel(int level)
+{
+    if (level <= AV_LOG_PANIC)
+        return spdlog::level::critical;
+    if (level <= AV_LOG_ERROR)
+        return spdlog::level::err;
+    if (level <= AV_LOG_WARNING)
+        return spdlog::level::warn;
+    if (level <= AV_LOG_INFO)
+        return spdlog::level::info;
+    if (level <= AV_LOG_VERBOSE)
+        return spdlog::level::debug;
+    return spdlog::level::trace;
+}
+
+static void UiAvLogCallback(void *avcl, int level, const char *fmt, va_list vl)
+{
+    if (!g_ui_logger)
+        return;
+
+    char line[2048];
+    int print_prefix = 1;
+    av_log_format_line2(avcl, level, fmt, vl, line, sizeof(line), &print_prefix);
+    std::string text(line);
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
+        text.pop_back();
+    if (text.empty())
+        return;
+    g_ui_logger->log(AvLevelToSpdLevel(level), "{}", text);
+}
+}  // namespace
 
 static void sigterm_handler(int sig)
 {
@@ -60,6 +160,8 @@ int Application::Run()
     int flags;
 
     init_dynload();
+    InitUiLogger();
+    av_log_set_callback(UiAvLogCallback);
     av_log_set_flags(AV_LOG_SKIP_REPEATED);
 
     avdevice_register_all();
@@ -255,18 +357,24 @@ void Application::RenderImGui()
         ImGui::SameLine();
         if (ImGui::Button("Open file..."))
             OpenFileDialogAndPlay();
+        ImGui::SameLine();
+        if (ImGui::Button(show_log_panel_ ? "Hide Log" : "Log"))
+            show_log_panel_ = !show_log_panel_;
     } else {
         float avail_w = ImGui::GetContentRegionAvail().x;
         float play_w = ImGui::CalcTextSize(play_text.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
         float time_w = ImGui::CalcTextSize(time_text.c_str()).x;
         float volume_w = FFMIN(110.0f, FFMAX(72.0f, avail_w * 0.22f));
+        float log_button_w = ImGui::CalcTextSize(show_log_panel_ ? "Hide Log" : "Log").x +
+            ImGui::GetStyle().FramePadding.x * 2.0f;
         float min_timeline_w = 80.0f;
         bool hide_time_text = false;
-        float needed_w = play_w + margin + time_w + margin + min_timeline_w + margin + volume_w;
+        float needed_w = play_w + margin + time_w + margin + min_timeline_w + margin + volume_w +
+            margin + log_button_w;
 
         if (avail_w < needed_w) {
             hide_time_text = true;
-            needed_w = play_w + margin + min_timeline_w + margin + volume_w;
+            needed_w = play_w + margin + min_timeline_w + margin + volume_w + margin + log_button_w;
         }
         if (avail_w < needed_w) {
             volume_w = FFMAX(58.0f, avail_w * 0.18f);
@@ -274,7 +382,8 @@ void Application::RenderImGui()
 
         float timeline_w = FFMAX(
             min_timeline_w,
-            avail_w - play_w - margin - (hide_time_text ? 0.0f : (time_w + margin)) - margin - volume_w);
+            avail_w - play_w - margin - (hide_time_text ? 0.0f : (time_w + margin)) - margin - volume_w -
+                margin - log_button_w);
 
         if (ImGui::Button(play_text.c_str()))
             stream_toggle_pause_and_clear_step(stream_);
@@ -314,13 +423,82 @@ void Application::RenderImGui()
         if (ImGui::SliderFloat("##volume", &volume_percent, 0.0f, 100.0f, volume_fmt)) {
             stream_->audio_volume = av_clip((int)((volume_percent / 100.0f) * SDL_MIX_MAXVOLUME), 0, SDL_MIX_MAXVOLUME);
         }
+        ImGui::SameLine(0.0f, margin);
+        if (ImGui::Button(show_log_panel_ ? "Hide Log" : "Log"))
+            show_log_panel_ = !show_log_panel_;
     }
 
     ImGui::End();
     ImGui::PopStyleColor();
     ImGui::PopStyleVar(2);
+    RenderLogPanel(bar_height);
     ImGui::Render();
     ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer_);
+}
+
+void Application::RenderLogPanel(float bar_height)
+{
+    if (!show_log_panel_ || !g_log_sink)
+        return;
+
+    ImGuiIO &io = ImGui::GetIO();
+    float panel_height = FFMAX(120.0f, io.DisplaySize.y - bar_height);
+    float min_width = 280.0f;
+    float max_width = FFMAX(min_width, io.DisplaySize.x * 0.85f);
+    log_panel_width_ = av_clipf(log_panel_width_, min_width, max_width);
+
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - log_panel_width_, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(log_panel_width_, panel_height), ImGuiCond_Always);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(min_width, 120.0f), ImVec2(max_width, io.DisplaySize.y));
+    if (!ImGui::Begin("Logs", &show_log_panel_, ImGuiWindowFlags_NoCollapse)) {
+        ImGui::End();
+        return;
+    }
+
+    log_panel_width_ = ImGui::GetWindowWidth();
+    const char *level_names[] = {"All", "Info+", "Warn+", "Error+"};
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::Combo("Level", &log_level_filter_, level_names, IM_ARRAYSIZE(level_names));
+    ImGui::SameLine();
+    ImGui::Checkbox("Auto-scroll", &log_auto_scroll_);
+    ImGui::SameLine();
+    ImGui::Checkbox("Wrap", &log_wrap_lines_);
+    ImGui::SameLine();
+    if (ImGui::Button("Clear"))
+        g_log_sink->Clear();
+
+    ImGui::Separator();
+    ImGuiWindowFlags child_flags = ImGuiWindowFlags_HorizontalScrollbar;
+    ImGui::BeginChild("LogScrollRegion", ImVec2(0.0f, 0.0f), false, child_flags);
+
+    std::vector<UiLogLine> lines = g_log_sink->Snapshot();
+    if (log_wrap_lines_)
+        ImGui::PushTextWrapPos();
+    for (const UiLogLine &line : lines) {
+        if (log_level_filter_ == 1 && line.level < spdlog::level::info)
+            continue;
+        if (log_level_filter_ == 2 && line.level < spdlog::level::warn)
+            continue;
+        if (log_level_filter_ == 3 && line.level < spdlog::level::err)
+            continue;
+
+        if (line.level >= spdlog::level::err)
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.45f, 0.45f, 1.0f));
+        else if (line.level == spdlog::level::warn)
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.85f, 0.35f, 1.0f));
+
+        ImGui::TextUnformatted(line.text.c_str());
+
+        if (line.level >= spdlog::level::warn)
+            ImGui::PopStyleColor();
+    }
+    if (log_wrap_lines_)
+        ImGui::PopTextWrapPos();
+    if (log_auto_scroll_ && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f)
+        ImGui::SetScrollHereY(1.0f);
+
+    ImGui::EndChild();
+    ImGui::End();
 }
 
 bool Application::OpenFileDialogAndPlay()
@@ -403,6 +581,7 @@ bool Application::OpenFileDialogAndPlay()
         window_ = nullptr;
     }
     avformat_network_deinit();
+    ShutdownUiLogger();
     SDL_Quit();
     av_log(nullptr, AV_LOG_QUIET, "%s", "");
     exit(0);
