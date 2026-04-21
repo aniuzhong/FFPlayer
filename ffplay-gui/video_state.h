@@ -76,7 +76,8 @@ typedef struct Clock {
     double speed;
     int serial;
     int paused;
-    int *queue_serial;
+    int (*queue_serial_getter)(void *opaque);
+    void *queue_serial_opaque;
 } Clock;
 
 enum {
@@ -130,7 +131,7 @@ typedef struct VideoState {
     double audio_diff_threshold;
     int audio_diff_avg_count;
     AVStream *audio_st;
-    PacketQueue audioq;
+    PacketQueue *audioq;
     int audio_hw_buf_size;
     uint8_t *audio_buf;
     uint8_t *audio_buf1;
@@ -165,14 +166,14 @@ typedef struct VideoState {
 
     int subtitle_stream;
     AVStream *subtitle_st;
-    PacketQueue subtitleq;
+    PacketQueue *subtitleq;
 
     double frame_timer;
     double frame_last_returned_time;
     double frame_last_filter_delay;
     int video_stream;
     AVStream *video_st;
-    PacketQueue videoq;
+    PacketQueue *videoq;
     double max_frame_duration;
     struct SwsContext *sub_convert_ctx;
     int eof;

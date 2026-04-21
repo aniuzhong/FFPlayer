@@ -83,7 +83,7 @@ int audio_thread(void *arg)
                 av_frame_move_ref(af->frame, frame);
                 frame_queue_push(&is->sampq);
 
-                if (is->audioq.serial != is->auddec.pkt_serial)
+                if (packet_queue_get_serial(is->audioq) != is->auddec.pkt_serial)
                     break;
             }
             if (ret == AVERROR_EOF)

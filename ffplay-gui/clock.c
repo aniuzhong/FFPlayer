@@ -9,7 +9,8 @@
 
 double get_clock(Clock *c)
 {
-    if (*c->queue_serial != c->serial)
+    int queue_serial = c->queue_serial_getter(c->queue_serial_opaque);
+    if (queue_serial != c->serial)
         return NAN;
     if (c->paused) {
         return c->pts;
@@ -39,11 +40,12 @@ void set_clock_speed(Clock *c, double speed)
     c->speed = speed;
 }
 
-void init_clock(Clock *c, int *queue_serial)
+void init_clock_with_serial_getter(Clock *c, int (*queue_serial_getter)(void *opaque), void *queue_serial_opaque)
 {
     c->speed = 1.0;
     c->paused = 0;
-    c->queue_serial = queue_serial;
+    c->queue_serial_getter = queue_serial_getter;
+    c->queue_serial_opaque = queue_serial_opaque;
     set_clock(c, NAN, -1);
 }
 
@@ -82,11 +84,11 @@ double get_master_clock(VideoState *is)
 
 void check_external_clock_speed(VideoState *is)
 {
-    if (is->video_stream >= 0 && is->videoq.nb_packets <= EXTERNAL_CLOCK_MIN_FRAMES ||
-        is->audio_stream >= 0 && is->audioq.nb_packets <= EXTERNAL_CLOCK_MIN_FRAMES) {
+    if (is->video_stream >= 0 && packet_queue_get_nb_packets(is->videoq) <= EXTERNAL_CLOCK_MIN_FRAMES ||
+        is->audio_stream >= 0 && packet_queue_get_nb_packets(is->audioq) <= EXTERNAL_CLOCK_MIN_FRAMES) {
         set_clock_speed(&is->extclk, FFMAX(EXTERNAL_CLOCK_SPEED_MIN, is->extclk.speed - EXTERNAL_CLOCK_SPEED_STEP));
-    } else if ((is->video_stream < 0 || is->videoq.nb_packets > EXTERNAL_CLOCK_MAX_FRAMES) &&
-               (is->audio_stream < 0 || is->audioq.nb_packets > EXTERNAL_CLOCK_MAX_FRAMES)) {
+    } else if ((is->video_stream < 0 || packet_queue_get_nb_packets(is->videoq) > EXTERNAL_CLOCK_MAX_FRAMES) &&
+               (is->audio_stream < 0 || packet_queue_get_nb_packets(is->audioq) > EXTERNAL_CLOCK_MAX_FRAMES)) {
         set_clock_speed(&is->extclk, FFMIN(EXTERNAL_CLOCK_SPEED_MAX, is->extclk.speed + EXTERNAL_CLOCK_SPEED_STEP));
     } else {
         double speed = is->extclk.speed;

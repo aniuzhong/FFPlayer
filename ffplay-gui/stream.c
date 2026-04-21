@@ -13,6 +13,16 @@
 #include "libavutil/error.h"
 #include "libavutil/time.h"
 
+static int packet_queue_serial_getter(void *opaque)
+{
+    return packet_queue_get_serial((PacketQueue *)opaque);
+}
+
+static int clock_serial_getter(void *opaque)
+{
+    return ((Clock *)opaque)->serial;
+}
+
 void stream_seek(VideoState *is, int64_t pos, int64_t rel, int by_bytes)
 {
     if (!is->seek_req) {
@@ -227,16 +237,17 @@ VideoState *stream_open(const char *filename,
     if (!is->demuxer)
         goto fail;
 
-    if (frame_queue_init(&is->pictq, &is->videoq, VIDEO_PICTURE_QUEUE_SIZE, 1) < 0)
-        goto fail;
-    if (frame_queue_init(&is->subpq, &is->subtitleq, SUBPICTURE_QUEUE_SIZE, 0) < 0)
-        goto fail;
-    if (frame_queue_init(&is->sampq, &is->audioq, SAMPLE_QUEUE_SIZE, 1) < 0)
+    is->videoq = packet_queue_create();
+    is->audioq = packet_queue_create();
+    is->subtitleq = packet_queue_create();
+    if (!is->videoq || !is->audioq || !is->subtitleq)
         goto fail;
 
-    if (packet_queue_init(&is->videoq) < 0 ||
-        packet_queue_init(&is->audioq) < 0 ||
-        packet_queue_init(&is->subtitleq) < 0)
+    if (frame_queue_init(&is->pictq, is->videoq, VIDEO_PICTURE_QUEUE_SIZE, 1) < 0)
+        goto fail;
+    if (frame_queue_init(&is->subpq, is->subtitleq, SUBPICTURE_QUEUE_SIZE, 0) < 0)
+        goto fail;
+    if (frame_queue_init(&is->sampq, is->audioq, SAMPLE_QUEUE_SIZE, 1) < 0)
         goto fail;
 
     if (!(is->continue_read_thread = SDL_CreateCond())) {
@@ -244,9 +255,9 @@ VideoState *stream_open(const char *filename,
         goto fail;
     }
 
-    init_clock(&is->vidclk, &is->videoq.serial);
-    init_clock(&is->audclk, &is->audioq.serial);
-    init_clock(&is->extclk, &is->extclk.serial);
+    init_clock_with_serial_getter(&is->vidclk, packet_queue_serial_getter, is->videoq);
+    init_clock_with_serial_getter(&is->audclk, packet_queue_serial_getter, is->audioq);
+    init_clock_with_serial_getter(&is->extclk, clock_serial_getter, &is->extclk);
     is->audio_clock_serial = -1;
     is->audio_volume = SDL_MIX_MAXVOLUME;
     is->muted = 0;
@@ -373,7 +384,7 @@ int stream_component_open(VideoState *is, int stream_index)
         is->audio_stream = stream_index;
         is->audio_st = ic->streams[stream_index];
 
-        if ((ret = decoder_init(&is->auddec, avctx, &is->audioq, is->continue_read_thread)) < 0)
+        if ((ret = decoder_init(&is->auddec, avctx, is->audioq, is->continue_read_thread)) < 0)
             goto fail;
         if (is->ic->iformat->flags & AVFMT_NOTIMESTAMPS) {
             is->auddec.start_pts = is->audio_st->start_time;
@@ -387,7 +398,7 @@ int stream_component_open(VideoState *is, int stream_index)
         is->video_stream = stream_index;
         is->video_st = ic->streams[stream_index];
 
-        if ((ret = decoder_init(&is->viddec, avctx, &is->videoq, is->continue_read_thread)) < 0)
+        if ((ret = decoder_init(&is->viddec, avctx, is->videoq, is->continue_read_thread)) < 0)
             goto fail;
         if ((ret = decoder_start(&is->viddec, video_thread, "video_decoder", is)) < 0)
             goto out;
@@ -397,7 +408,7 @@ int stream_component_open(VideoState *is, int stream_index)
         is->subtitle_stream = stream_index;
         is->subtitle_st = ic->streams[stream_index];
 
-        if ((ret = decoder_init(&is->subdec, avctx, &is->subtitleq, is->continue_read_thread)) < 0)
+        if ((ret = decoder_init(&is->subdec, avctx, is->subtitleq, is->continue_read_thread)) < 0)
             goto fail;
         if ((ret = decoder_start(&is->subdec, subtitle_thread, "subtitle_decoder", is)) < 0)
             goto out;
@@ -493,12 +504,12 @@ void stream_close(VideoState *is)
         stream_component_close(is, is->subtitle_stream);
 
     avformat_close_input(&is->ic);
-    if (packet_queue_is_initialized(&is->videoq))
-        packet_queue_destroy(&is->videoq);
-    if (packet_queue_is_initialized(&is->audioq))
-        packet_queue_destroy(&is->audioq);
-    if (packet_queue_is_initialized(&is->subtitleq))
-        packet_queue_destroy(&is->subtitleq);
+    if (packet_queue_is_initialized(is->videoq))
+        packet_queue_free(&is->videoq);
+    if (packet_queue_is_initialized(is->audioq))
+        packet_queue_free(&is->audioq);
+    if (packet_queue_is_initialized(is->subtitleq))
+        packet_queue_free(&is->subtitleq);
     if (is->pictq.mutex && is->pictq.cond)
         frame_queue_destroy(&is->pictq);
     if (is->sampq.mutex && is->sampq.cond)

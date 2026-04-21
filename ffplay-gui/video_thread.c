@@ -60,7 +60,7 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
                 if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD &&
                     diff - is->frame_last_filter_delay < 0 &&
                     is->viddec.pkt_serial == is->vidclk.serial &&
-                    is->videoq.nb_packets) {
+                    packet_queue_get_nb_packets(is->videoq)) {
                     is->frame_drops_early++;
                     av_frame_unref(frame);
                     got_picture = 0;
@@ -165,7 +165,7 @@ int video_thread(void *arg)
             pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
             ret = queue_picture(is, frame, pts, duration, fd ? fd->pkt_pos : -1, is->viddec.pkt_serial);
             av_frame_unref(frame);
-            if (is->videoq.serial != is->viddec.pkt_serial)
+            if (packet_queue_get_serial(is->videoq) != is->viddec.pkt_serial)
                 break;
         }
 

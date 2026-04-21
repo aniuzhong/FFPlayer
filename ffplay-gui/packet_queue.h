@@ -21,33 +21,33 @@
 #include <SDL.h>
 #include <SDL_thread.h>
 
-#include <libavutil/fifo.h>
-#include <libavcodec/avcodec.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct PacketQueue {
-    AVFifo    *pkt_list;      // FIFO storage of queued packets
-    int        nb_packets;    // Number of packets in queue
-    int        size;          // Total queued size in bytes
-    int64_t    duration;      // Total queued duration in stream time base
-    int        abort_request; // Abort flag for blocking operations
-    int        serial;        // Queue generation, bumped on flush/start
-    SDL_mutex *mutex;         // Mutex protecting queue state
-    SDL_cond  *cond;          // Condition variable for wait/signal
-} PacketQueue;
+typedef struct AVPacket AVPacket;
+
+typedef struct PacketQueue PacketQueue;
+
+/**
+ * Allocate and initialize a packet queue.
+ */
+PacketQueue *packet_queue_create(void);
+
+/**
+ * Destroy and free a packet queue instance.
+ */
+void packet_queue_free(PacketQueue **q);
 
 /**
  * Enqueue one packet into the queue (with locking).
  */
-int  packet_queue_put(PacketQueue *q, AVPacket *pkt);
+int packet_queue_put(PacketQueue *q, AVPacket *pkt);
 
 /**
  * Enqueue a null packet for the given stream (with locking).
  */
-int  packet_queue_put_nullpacket(PacketQueue *q, AVPacket *pkt, int stream_index);
+int packet_queue_put_nullpacket(PacketQueue *q, AVPacket *pkt, int stream_index);
 
 /**
  * Initialize queue resources and state (with locking).
@@ -77,22 +77,22 @@ void packet_queue_start(PacketQueue *q);
 /**
  * Dequeue one packet; block optionally (with locking).
  */
-int  packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, int *serial);
+int packet_queue_get(PacketQueue *q, AVPacket *pkt, int block, int *serial);
 
 /**
  * Return non-zero if queue is aborted (no locking).
  */
-int  packet_queue_is_aborted(PacketQueue *q);
+int packet_queue_is_aborted(PacketQueue *q);
 
 /**
  * Return current queue serial value (no locking).
  */
-int  packet_queue_get_serial(PacketQueue *q);
+int packet_queue_get_serial(PacketQueue *q);
 
 /**
  * Return number of queued packets (no locking).
  */
-int  packet_queue_get_nb_packets(PacketQueue *q);
+int packet_queue_get_nb_packets(PacketQueue *q);
 
 /**
  * Return total queued duration (no locking).
@@ -100,9 +100,14 @@ int  packet_queue_get_nb_packets(PacketQueue *q);
 int64_t packet_queue_get_duration(PacketQueue *q);
 
 /**
+ * Return total queued size in bytes (no locking).
+ */
+int packet_queue_get_size(PacketQueue *q);
+
+/**
  * Return non-zero if queue internals are initialized (no locking).
  */
-int  packet_queue_is_initialized(PacketQueue *q);
+int packet_queue_is_initialized(PacketQueue *q);
 
 #ifdef __cplusplus
 }

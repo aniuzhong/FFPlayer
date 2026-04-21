@@ -1,16 +1,52 @@
 #include <string.h>
 
+#include <libavcodec/avcodec.h>
 #include <libavutil/mem.h>
 #include <libavutil/error.h>
 #include <libavutil/log.h>
+#include <libavutil/fifo.h>
+
+#include <SDL.h>
+#include <SDL_thread.h>
 
 #include "packet_queue.h"
-
 
 typedef struct MyAVPacketList {
     AVPacket *pkt;
     int       serial; // Packet serial number
 } MyAVPacketList;
+
+struct PacketQueue {
+    AVFifo    *pkt_list;
+    int        nb_packets;
+    int        size;
+    int64_t    duration;
+    int        abort_request;
+    int        serial;
+    SDL_mutex *mutex;
+    SDL_cond  *cond;
+};
+
+PacketQueue *packet_queue_create(void)
+{
+    PacketQueue *q = av_mallocz(sizeof(PacketQueue));
+    if (!q)
+        return NULL;
+    if (packet_queue_init(q) < 0) {
+        av_free(q);
+        return NULL;
+    }
+    return q;
+}
+
+void packet_queue_free(PacketQueue **q)
+{
+    if (!q || !*q)
+        return;
+    packet_queue_destroy(*q);
+    av_free(*q);
+    *q = NULL;
+}
 
 static int packet_queue_put_private(PacketQueue *q, AVPacket *pkt)
 {
@@ -171,6 +207,11 @@ int packet_queue_get_nb_packets(PacketQueue *q)
 int64_t packet_queue_get_duration(PacketQueue *q)
 {
     return q->duration;
+}
+
+int packet_queue_get_size(PacketQueue *q)
+{
+    return q->size;
 }
 
 int packet_queue_is_initialized(PacketQueue *q)

@@ -218,11 +218,11 @@ int read_thread(void *arg)
                        "%s: error while seeking\n", is->ic->url);
             } else {
                 if (is->audio_stream >= 0)
-                    packet_queue_flush(&is->audioq);
+                    packet_queue_flush(is->audioq);
                 if (is->subtitle_stream >= 0)
-                    packet_queue_flush(&is->subtitleq);
+                    packet_queue_flush(is->subtitleq);
                 if (is->video_stream >= 0)
-                    packet_queue_flush(&is->videoq);
+                    packet_queue_flush(is->videoq);
                 if (is->seek_flags & AVSEEK_FLAG_BYTE) {
                    set_clock(&is->extclk, NAN, 0);
                 } else {
@@ -239,17 +239,19 @@ int read_thread(void *arg)
             if (is->video_st && is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC) {
                 if ((ret = av_packet_ref(pkt, &is->video_st->attached_pic)) < 0)
                     goto fail;
-                packet_queue_put(&is->videoq, pkt);
-                packet_queue_put_nullpacket(&is->videoq, pkt, is->video_stream);
+                packet_queue_put(is->videoq, pkt);
+                packet_queue_put_nullpacket(is->videoq, pkt, is->video_stream);
             }
             is->queue_attachments_req = 0;
         }
 
         if (!is->realtime &&
-              (is->audioq.size + is->videoq.size + is->subtitleq.size > MAX_QUEUE_SIZE
-            || (stream_has_enough_packets(is->audio_st, is->audio_stream, &is->audioq) &&
-                stream_has_enough_packets(is->video_st, is->video_stream, &is->videoq) &&
-                stream_has_enough_packets(is->subtitle_st, is->subtitle_stream, &is->subtitleq)))) {
+              (packet_queue_get_size(is->audioq) +
+               packet_queue_get_size(is->videoq) +
+               packet_queue_get_size(is->subtitleq) > MAX_QUEUE_SIZE
+            || (stream_has_enough_packets(is->audio_st, is->audio_stream, is->audioq) &&
+                stream_has_enough_packets(is->video_st, is->video_stream, is->videoq) &&
+                stream_has_enough_packets(is->subtitle_st, is->subtitle_stream, is->subtitleq)))) {
             SDL_LockMutex(wait_mutex);
             SDL_CondWaitTimeout(is->continue_read_thread, wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
@@ -259,11 +261,11 @@ int read_thread(void *arg)
         if (ret < 0) {
             if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !is->eof) {
                 if (is->video_stream >= 0)
-                    packet_queue_put_nullpacket(&is->videoq, pkt, is->video_stream);
+                    packet_queue_put_nullpacket(is->videoq, pkt, is->video_stream);
                 if (is->audio_stream >= 0)
-                    packet_queue_put_nullpacket(&is->audioq, pkt, is->audio_stream);
+                    packet_queue_put_nullpacket(is->audioq, pkt, is->audio_stream);
                 if (is->subtitle_stream >= 0)
-                    packet_queue_put_nullpacket(&is->subtitleq, pkt, is->subtitle_stream);
+                    packet_queue_put_nullpacket(is->subtitleq, pkt, is->subtitle_stream);
                 is->eof = 1;
             }
             if (ic->pb && ic->pb->error)
@@ -279,12 +281,12 @@ int read_thread(void *arg)
         ic->streams[pkt->stream_index]->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
 
         if (pkt->stream_index == is->audio_stream) {
-            packet_queue_put(&is->audioq, pkt);
+            packet_queue_put(is->audioq, pkt);
         } else if (pkt->stream_index == is->video_stream
                    && !(is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
-            packet_queue_put(&is->videoq, pkt);
+            packet_queue_put(is->videoq, pkt);
         } else if (pkt->stream_index == is->subtitle_stream) {
-            packet_queue_put(&is->subtitleq, pkt);
+            packet_queue_put(is->subtitleq, pkt);
         } else {
             av_packet_unref(pkt);
         }
