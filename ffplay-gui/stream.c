@@ -13,6 +13,10 @@
 #include "libavutil/error.h"
 #include "libavutil/time.h"
 
+#define VIDEO_PICTURE_QUEUE_SIZE 3
+#define SUBPICTURE_QUEUE_SIZE 16
+#define SAMPLE_QUEUE_SIZE 9
+
 static int packet_queue_serial_getter(void *opaque)
 {
     return packet_queue_get_serial((PacketQueue *)opaque);
@@ -176,9 +180,9 @@ void stream_seek_relative(VideoState *is, double incr_seconds)
     if (demuxer_get_seek_mode(is->demuxer)) {
         pos = -1;
         if (pos < 0 && is->video_stream >= 0)
-            pos = frame_queue_last_pos(&is->pictq);
+            pos = frame_queue_last_pos(is->pictq);
         if (pos < 0 && is->audio_stream >= 0)
-            pos = frame_queue_last_pos(&is->sampq);
+            pos = frame_queue_last_pos(is->sampq);
         if (pos < 0)
             pos = avio_tell(is->ic->pb);
         if (is->ic->bit_rate)
@@ -243,11 +247,10 @@ VideoState *stream_open(const char *filename,
     if (!is->videoq || !is->audioq || !is->subtitleq)
         goto fail;
 
-    if (frame_queue_init(&is->pictq, is->videoq, VIDEO_PICTURE_QUEUE_SIZE, 1) < 0)
-        goto fail;
-    if (frame_queue_init(&is->subpq, is->subtitleq, SUBPICTURE_QUEUE_SIZE, 0) < 0)
-        goto fail;
-    if (frame_queue_init(&is->sampq, is->audioq, SAMPLE_QUEUE_SIZE, 1) < 0)
+    is->pictq = frame_queue_create(is->videoq, VIDEO_PICTURE_QUEUE_SIZE, 1);
+    is->subpq = frame_queue_create(is->subtitleq, SUBPICTURE_QUEUE_SIZE, 0);
+    is->sampq = frame_queue_create(is->audioq, SAMPLE_QUEUE_SIZE, 1);
+    if (!is->pictq || !is->subpq || !is->sampq)
         goto fail;
 
     if (!(is->continue_read_thread = SDL_CreateCond())) {
@@ -437,7 +440,7 @@ void stream_component_close(VideoState *is, int stream_index)
 
     switch (codecpar->codec_type) {
     case AVMEDIA_TYPE_AUDIO:
-        decoder_abort(&is->auddec, &is->sampq);
+        decoder_abort(&is->auddec, is->sampq);
         if (is->audio_device)
             audio_device_close(is->audio_device);
         decoder_destroy(&is->auddec);
@@ -455,11 +458,11 @@ void stream_component_close(VideoState *is, int stream_index)
         }
         break;
     case AVMEDIA_TYPE_VIDEO:
-        decoder_abort(&is->viddec, &is->pictq);
+        decoder_abort(&is->viddec, is->pictq);
         decoder_destroy(&is->viddec);
         break;
     case AVMEDIA_TYPE_SUBTITLE:
-        decoder_abort(&is->subdec, &is->subpq);
+        decoder_abort(&is->subdec, is->subpq);
         decoder_destroy(&is->subdec);
         break;
     default:
@@ -510,12 +513,12 @@ void stream_close(VideoState *is)
         packet_queue_free(&is->audioq);
     if (packet_queue_is_initialized(is->subtitleq))
         packet_queue_free(&is->subtitleq);
-    if (frame_queue_is_initialized(&is->pictq))
-        frame_queue_destroy(&is->pictq);
-    if (frame_queue_is_initialized(&is->sampq))
-        frame_queue_destroy(&is->sampq);
-    if (frame_queue_is_initialized(&is->subpq))
-        frame_queue_destroy(&is->subpq);
+    if (frame_queue_is_initialized(is->pictq))
+        frame_queue_free(&is->pictq);
+    if (frame_queue_is_initialized(is->sampq))
+        frame_queue_free(&is->sampq);
+    if (frame_queue_is_initialized(is->subpq))
+        frame_queue_free(&is->subpq);
     if (is->continue_read_thread)
         SDL_DestroyCond(is->continue_read_thread);
     sws_freeContext(is->sub_convert_ctx);

@@ -78,15 +78,15 @@ static int audio_decode_frame(VideoState *is)
 
     do {
 #if defined(_WIN32)
-        while (frame_queue_nb_remaining(&is->sampq) == 0) {
+        while (frame_queue_nb_remaining(is->sampq) == 0) {
             if ((av_gettime_relative() - is->audio_callback_time) > 1000000LL * is->audio_hw_buf_size / is->audio_tgt.bytes_per_sec / 2)
                 return -1;
             av_usleep (1000);
         }
 #endif
-        if (!(af = frame_queue_peek_readable(&is->sampq)))
+        if (!(af = frame_queue_peek_readable(is->sampq)))
             return -1;
-        frame_queue_next(&is->sampq);
+        frame_queue_next(is->sampq);
     } while (af->serial != packet_queue_get_serial(is->audioq));
 
     data_size = av_samples_get_buffer_size(NULL, af->frame->ch_layout.nb_channels,

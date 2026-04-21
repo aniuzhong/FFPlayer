@@ -16,7 +16,7 @@ static int queue_picture(VideoState *is, AVFrame *src_frame, double pts, double 
 {
     Frame *vp;
 
-    if (!(vp = frame_queue_peek_writable(&is->pictq)))
+    if (!(vp = frame_queue_peek_writable(is->pictq)))
         return -1;
 
     vp->sar = src_frame->sample_aspect_ratio;
@@ -35,7 +35,7 @@ static int queue_picture(VideoState *is, AVFrame *src_frame, double pts, double 
         is->on_frame_size_changed(is, vp->width, vp->height, vp->sar);
 
     av_frame_move_ref(vp->frame, src_frame);
-    frame_queue_push(&is->pictq);
+    frame_queue_push(is->pictq);
     return 0;
 }
 

@@ -113,9 +113,9 @@ typedef struct VideoState {
     Clock vidclk;
     Clock extclk;
 
-    FrameQueue pictq;
-    FrameQueue subpq;
-    FrameQueue sampq;
+    FrameQueue *pictq;
+    FrameQueue *subpq;
+    FrameQueue *sampq;
 
     Decoder auddec;
     Decoder viddec;

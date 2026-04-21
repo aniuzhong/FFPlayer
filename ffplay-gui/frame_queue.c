@@ -1,10 +1,29 @@
-#include "frame_queue.h"
-
 #include <string.h>
 
-#include "libavutil/common.h"
-#include "libavutil/error.h"
-#include "libavutil/log.h"
+#include <libavutil/common.h>
+#include <libavutil/error.h>
+#include <libavutil/log.h>
+#include <libavutil/mem.h>
+
+#include "frame_queue.h"
+
+#define VIDEO_PICTURE_QUEUE_SIZE 3
+#define SUBPICTURE_QUEUE_SIZE 16
+#define SAMPLE_QUEUE_SIZE 9
+#define FRAME_QUEUE_SIZE FFMAX(SAMPLE_QUEUE_SIZE, FFMAX(VIDEO_PICTURE_QUEUE_SIZE, SUBPICTURE_QUEUE_SIZE))
+
+struct FrameQueue {
+    Frame        queue[FRAME_QUEUE_SIZE]; // Array of frames
+    int          rindex; // Index of the next readable frame
+    int          windex; // Index of the next writable frame
+    int          size; // Number of frames in the queue
+    int          max_size; // Maximum number of frames in the queue
+    int          keep_last; // Flag indicating if the last frame should be kept
+    int          rindex_shown; // Index of the last shown frame
+    SDL_mutex   *mutex; // Mutex protecting the queue
+    SDL_cond    *cond; // Condition variable for wait/signal
+    PacketQueue *pktq; // Pointer to the packet queue
+};
 
 static void frame_queue_unref_item(Frame *vp)
 {
@@ -33,6 +52,18 @@ int frame_queue_init(FrameQueue *f, PacketQueue *pktq, int max_size, int keep_la
     return 0;
 }
 
+FrameQueue *frame_queue_create(PacketQueue *pktq, int max_size, int keep_last)
+{
+    FrameQueue *f = av_mallocz(sizeof(FrameQueue));
+    if (!f)
+        return NULL;
+    if (frame_queue_init(f, pktq, max_size, keep_last) < 0) {
+        av_free(f);
+        return NULL;
+    }
+    return f;
+}
+
 void frame_queue_destroy(FrameQueue *f)
 {
     int i;
@@ -43,6 +74,15 @@ void frame_queue_destroy(FrameQueue *f)
     }
     SDL_DestroyMutex(f->mutex);
     SDL_DestroyCond(f->cond);
+}
+
+void frame_queue_free(FrameQueue **f)
+{
+    if (!f || !*f)
+        return;
+    frame_queue_destroy(*f);
+    av_free(*f);
+    *f = NULL;
 }
 
 void frame_queue_signal(FrameQueue *f)

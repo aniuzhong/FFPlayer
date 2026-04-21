@@ -10,7 +10,7 @@ int subtitle_thread(void *arg)
     double pts;
 
     for (;;) {
-        if (!(sp = frame_queue_peek_writable(&is->subpq)))
+        if (!(sp = frame_queue_peek_writable(is->subpq)))
             return 0;
 
         if ((got_subtitle = decoder_decode_frame(&is->subdec, NULL, &sp->sub)) < 0)
@@ -27,7 +27,7 @@ int subtitle_thread(void *arg)
             sp->height = is->subdec.avctx->height;
             sp->uploaded = 0;
 
-            frame_queue_push(&is->subpq);
+            frame_queue_push(is->subpq);
         } else if (got_subtitle) {
             avsubtitle_free(&sp->sub);
         }

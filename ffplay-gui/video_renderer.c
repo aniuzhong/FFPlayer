@@ -212,11 +212,11 @@ static void video_image_display(VideoRenderer *vr, VideoState *is)
     Frame *sp = NULL;
     SDL_Rect *rect = &is->render_params.target_rect;
 
-    vp = frame_queue_peek_last(&is->pictq);
+    vp = frame_queue_peek_last(is->pictq);
     calculate_display_rect(rect, is->xleft, is->ytop, is->width, is->height, vp->width, vp->height, vp->sar);
 
-    if (is->subtitle_st && frame_queue_nb_remaining(&is->subpq) > 0) {
-        sp = frame_queue_peek(&is->subpq);
+    if (is->subtitle_st && frame_queue_nb_remaining(is->subpq) > 0) {
+        sp = frame_queue_peek(is->subpq);
         if (vp->pts >= sp->pts + ((float) sp->sub.start_display_time / 1000)) {
             if (!sp->uploaded) {
                 uint8_t* pixels[4];
@@ -514,16 +514,16 @@ void video_renderer_refresh(VideoRenderer *vr, VideoState *is, double *remaining
 
     if (is->video_st) {
 retry:
-        if (frame_queue_nb_remaining(&is->pictq) == 0) {
+        if (frame_queue_nb_remaining(is->pictq) == 0) {
         } else {
             double last_duration, duration, delay;
             Frame *vp, *lastvp;
 
-            lastvp = frame_queue_peek_last(&is->pictq);
-            vp = frame_queue_peek(&is->pictq);
+            lastvp = frame_queue_peek_last(is->pictq);
+            vp = frame_queue_peek(is->pictq);
 
             if (vp->serial != packet_queue_get_serial(is->videoq)) {
-                frame_queue_next(&is->pictq);
+                frame_queue_next(is->pictq);
                 goto retry;
             }
 
@@ -546,26 +546,26 @@ retry:
             if (delay > 0 && time - is->frame_timer > AV_SYNC_THRESHOLD_MAX)
                 is->frame_timer = time;
 
-            frame_queue_lock(&is->pictq);
+            frame_queue_lock(is->pictq);
             if (!isnan(vp->pts))
                 update_video_pts(is, vp->pts, vp->serial);
-            frame_queue_unlock(&is->pictq);
+            frame_queue_unlock(is->pictq);
 
-            if (frame_queue_nb_remaining(&is->pictq) > 1) {
-                Frame *nextvp = frame_queue_peek_next(&is->pictq);
+            if (frame_queue_nb_remaining(is->pictq) > 1) {
+                Frame *nextvp = frame_queue_peek_next(is->pictq);
                 duration = vp_duration(is, vp, nextvp);
                 if (!is->step && get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER && time > is->frame_timer + duration) {
                     is->frame_drops_late++;
-                    frame_queue_next(&is->pictq);
+                    frame_queue_next(is->pictq);
                     goto retry;
                 }
             }
 
             if (is->subtitle_st) {
-                while (frame_queue_nb_remaining(&is->subpq) > 0) {
-                    sp = frame_queue_peek(&is->subpq);
-                    if (frame_queue_nb_remaining(&is->subpq) > 1)
-                        sp2 = frame_queue_peek_next(&is->subpq);
+                while (frame_queue_nb_remaining(is->subpq) > 0) {
+                    sp = frame_queue_peek(is->subpq);
+                    if (frame_queue_nb_remaining(is->subpq) > 1)
+                        sp2 = frame_queue_peek_next(is->subpq);
                     else
                         sp2 = NULL;
 
@@ -585,21 +585,21 @@ retry:
                                 }
                             }
                         }
-                        frame_queue_next(&is->subpq);
+                        frame_queue_next(is->subpq);
                     } else {
                         break;
                     }
                 }
             }
 
-            frame_queue_next(&is->pictq);
+            frame_queue_next(is->pictq);
             is->force_refresh = 1;
 
             if (is->step && !is->paused)
                 stream_toggle_pause(is);
         }
 display:
-        if (is->force_refresh && is->show_mode == SHOW_MODE_VIDEO && frame_queue_is_last_shown(&is->pictq))
+        if (is->force_refresh && is->show_mode == SHOW_MODE_VIDEO && frame_queue_is_last_shown(is->pictq))
             video_renderer_display(vr, is);
     }
     is->force_refresh = 0;
