@@ -61,6 +61,7 @@ void av_sync_bind(AvSync *sync,
                   int *video_stream,
                   double *max_frame_duration);
 int get_master_sync_type(const AvSync *sync);
+int av_sync_is_audio_master(const AvSync *sync);
 double get_master_clock(const AvSync *sync);
 void check_external_clock_speed(AvSync *sync);
 double av_sync_compute_frame_delay(const AvSync *sync, Frame *lastvp, Frame *vp);

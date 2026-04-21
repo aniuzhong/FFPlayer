@@ -38,6 +38,11 @@ int get_master_sync_type(const AvSync *sync)
     return AV_SYNC_EXTERNAL_CLOCK;
 }
 
+int av_sync_is_audio_master(const AvSync *sync)
+{
+    return get_master_sync_type(sync) == AV_SYNC_AUDIO_MASTER;
+}
+
 double get_master_clock(const AvSync *sync)
 {
     double val;

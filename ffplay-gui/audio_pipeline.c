@@ -35,7 +35,7 @@ static int synchronize_audio(VideoState *is, int nb_samples)
 {
     int wanted_nb_samples = nb_samples;
 
-    if (get_master_sync_type(&is->av_sync) != AV_SYNC_AUDIO_MASTER) {
+    if (!av_sync_is_audio_master(&is->av_sync)) {
         double diff, avg_diff;
         int min_nb_samples, max_nb_samples;
 
