@@ -501,8 +501,8 @@ void video_renderer_refresh(VideoRenderer *vr, VideoState *is, double *remaining
     double time;
     Frame *sp, *sp2;
 
-    if (!is->paused && get_master_sync_type(is) == AV_SYNC_EXTERNAL_CLOCK && is->realtime)
-        check_external_clock_speed(is);
+    if (!is->paused && get_master_sync_type(&is->av_sync) == AV_SYNC_EXTERNAL_CLOCK && is->realtime)
+        check_external_clock_speed(&is->av_sync);
 
     if (is->show_mode != SHOW_MODE_VIDEO && is->audio_st) {
         time = av_gettime_relative() / 1000000.0;
@@ -534,8 +534,8 @@ retry:
             if (is->paused)
                 goto display;
 
-            last_duration = vp_duration(is, lastvp, vp);
-            delay = compute_target_delay(last_duration, is);
+            last_duration = vp_duration(&is->av_sync, lastvp, vp);
+            delay = compute_target_delay(last_duration, &is->av_sync);
 
             time= av_gettime_relative()/1000000.0;
             if (time < is->frame_timer + delay) {
@@ -549,13 +549,13 @@ retry:
 
             frame_queue_lock(is->pictq);
             if (!isnan(vp->pts))
-                update_video_pts(is, vp->pts, vp->serial);
+                update_video_pts(&is->av_sync, vp->pts, vp->serial);
             frame_queue_unlock(is->pictq);
 
             if (frame_queue_nb_remaining(is->pictq) > 1) {
                 Frame *nextvp = frame_queue_peek_next(is->pictq);
-                duration = vp_duration(is, vp, nextvp);
-                if (!is->step && get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER && time > is->frame_timer + duration) {
+                duration = vp_duration(&is->av_sync, vp, nextvp);
+                if (!is->step && get_master_sync_type(&is->av_sync) != AV_SYNC_VIDEO_MASTER && time > is->frame_timer + duration) {
                     is->frame_drops_late++;
                     frame_queue_next(is->pictq);
                     goto retry;

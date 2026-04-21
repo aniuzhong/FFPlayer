@@ -55,9 +55,9 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
 
         frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(is->ic, is->video_st, frame);
 
-        if (get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER) {
+        if (get_master_sync_type(&is->av_sync) != AV_SYNC_VIDEO_MASTER) {
             if (frame->pts != AV_NOPTS_VALUE) {
-                double diff = dpts - get_master_clock(is);
+                double diff = dpts - get_master_clock(&is->av_sync);
                 if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD &&
                     diff - is->frame_last_filter_delay < 0 &&
                     is->viddec.pkt_serial == clock_get_serial(is->vidclk) &&

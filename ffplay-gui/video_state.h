@@ -15,6 +15,7 @@
 #include "audio_device.h"
 #include "decoder.h"
 #include "clock.h"
+#include "av_sync.h"
 
 #define VIDEO_BACKGROUND_TILE_SIZE 64
 
@@ -75,6 +76,7 @@ typedef struct VideoState {
     Clock *audclk;
     Clock *vidclk;
     Clock *extclk;
+    AvSync av_sync;
 
     FrameQueue *pictq;
     FrameQueue *subpq;
