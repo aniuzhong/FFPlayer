@@ -517,7 +517,7 @@ void video_renderer_refresh(VideoRenderer *vr, VideoState *is, double *remaining
 retry:
         if (frame_queue_nb_remaining(is->pictq) == 0) {
         } else {
-            double last_duration, duration, delay;
+            double duration, delay;
             Frame *vp, *lastvp;
 
             lastvp = frame_queue_peek_last(is->pictq);
@@ -534,8 +534,7 @@ retry:
             if (is->paused)
                 goto display;
 
-            last_duration = vp_duration(&is->av_sync, lastvp, vp);
-            delay = compute_target_delay(last_duration, &is->av_sync);
+            delay = av_sync_compute_frame_delay(&is->av_sync, lastvp, vp);
 
             time= av_gettime_relative()/1000000.0;
             if (time < is->frame_timer + delay) {

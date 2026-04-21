@@ -63,6 +63,7 @@ void av_sync_bind(AvSync *sync,
 int get_master_sync_type(const AvSync *sync);
 double get_master_clock(const AvSync *sync);
 void check_external_clock_speed(AvSync *sync);
+double av_sync_compute_frame_delay(const AvSync *sync, Frame *lastvp, Frame *vp);
 double compute_target_delay(double delay, const AvSync *sync);
 double vp_duration(const AvSync *sync, Frame *vp, Frame *nextvp);
 void update_video_pts(AvSync *sync, double pts, int serial);

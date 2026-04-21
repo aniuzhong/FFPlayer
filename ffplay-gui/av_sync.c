@@ -71,6 +71,12 @@ void check_external_clock_speed(AvSync *sync)
     }
 }
 
+double av_sync_compute_frame_delay(const AvSync *sync, Frame *lastvp, Frame *vp)
+{
+    double last_duration = vp_duration(sync, lastvp, vp);
+    return compute_target_delay(last_duration, sync);
+}
+
 double compute_target_delay(double delay, const AvSync *sync)
 {
     double sync_threshold, diff = 0;
