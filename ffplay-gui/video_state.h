@@ -1,9 +1,6 @@
 #ifndef FFPLAY_GUI_VIDEO_STATE_H
 #define FFPLAY_GUI_VIDEO_STATE_H
 
-#include "config.h"
-#include "config_components.h"
-
 #include <SDL.h>
 #include <SDL_thread.h>
 
