@@ -543,7 +543,7 @@ retry:
             }
 
             is->frame_timer += delay;
-            if (delay > 0 && time - is->frame_timer > AV_SYNC_THRESHOLD_MAX)
+            if (av_sync_should_reset_frame_timer(delay, time, is->frame_timer))
                 is->frame_timer = time;
 
             frame_queue_lock(is->pictq);

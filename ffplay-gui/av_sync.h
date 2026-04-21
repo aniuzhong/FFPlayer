@@ -72,6 +72,7 @@ double av_sync_audio_master_diff(const AvSync *sync);
 double av_sync_video_master_diff(const AvSync *sync, double video_clock);
 int av_sync_is_external_clock_master(const AvSync *sync);
 int av_sync_should_late_drop(const AvSync *sync, int step, double time, double frame_timer, double duration);
+int av_sync_should_reset_frame_timer(double delay, double time, double frame_timer);
 int av_sync_should_early_drop(const AvSync *sync,
                               double video_clock,
                               double frame_last_filter_delay,

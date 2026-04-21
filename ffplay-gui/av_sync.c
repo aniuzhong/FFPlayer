@@ -148,6 +148,11 @@ int av_sync_should_late_drop(const AvSync *sync, int step, double time, double f
            time > frame_timer + duration;
 }
 
+int av_sync_should_reset_frame_timer(double delay, double time, double frame_timer)
+{
+    return delay > 0 && time - frame_timer > AV_SYNC_THRESHOLD_MAX;
+}
+
 int av_sync_should_early_drop(const AvSync *sync,
                               double video_clock,
                               double frame_last_filter_delay,
