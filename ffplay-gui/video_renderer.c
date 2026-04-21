@@ -546,10 +546,10 @@ retry:
             if (delay > 0 && time - is->frame_timer > AV_SYNC_THRESHOLD_MAX)
                 is->frame_timer = time;
 
-            SDL_LockMutex(is->pictq.mutex);
+            frame_queue_lock(&is->pictq);
             if (!isnan(vp->pts))
                 update_video_pts(is, vp->pts, vp->serial);
-            SDL_UnlockMutex(is->pictq.mutex);
+            frame_queue_unlock(&is->pictq);
 
             if (frame_queue_nb_remaining(&is->pictq) > 1) {
                 Frame *nextvp = frame_queue_peek_next(&is->pictq);

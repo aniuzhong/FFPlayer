@@ -52,6 +52,16 @@ void frame_queue_signal(FrameQueue *f)
     SDL_UnlockMutex(f->mutex);
 }
 
+void frame_queue_lock(FrameQueue *f)
+{
+    SDL_LockMutex(f->mutex);
+}
+
+void frame_queue_unlock(FrameQueue *f)
+{
+    SDL_UnlockMutex(f->mutex);
+}
+
 Frame *frame_queue_peek(FrameQueue *f)
 {
     return &f->queue[(f->rindex + f->rindex_shown) % f->max_size];
