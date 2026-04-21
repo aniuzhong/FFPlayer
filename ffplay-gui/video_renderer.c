@@ -501,7 +501,7 @@ void video_renderer_refresh(VideoRenderer *vr, VideoState *is, double *remaining
     double time;
     Frame *sp, *sp2;
 
-    if (!is->paused && get_master_sync_type(&is->av_sync) == AV_SYNC_EXTERNAL_CLOCK && is->realtime)
+    if (!is->paused && av_sync_is_external_clock_master(&is->av_sync) && is->realtime)
         check_external_clock_speed(&is->av_sync);
 
     if (is->show_mode != SHOW_MODE_VIDEO && is->audio_st) {
@@ -555,7 +555,7 @@ retry:
             if (frame_queue_nb_remaining(is->pictq) > 1) {
                 Frame *nextvp = frame_queue_peek_next(is->pictq);
                 duration = vp_duration(&is->av_sync, vp, nextvp);
-                if (!is->step && get_master_sync_type(&is->av_sync) != AV_SYNC_VIDEO_MASTER && time > is->frame_timer + duration) {
+                if (av_sync_should_late_drop(&is->av_sync, is->step, time, is->frame_timer, duration)) {
                     is->frame_drops_late++;
                     frame_queue_next(is->pictq);
                     goto retry;

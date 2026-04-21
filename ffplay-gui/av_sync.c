@@ -124,6 +124,18 @@ double av_sync_video_master_diff(const AvSync *sync, double video_clock)
     return video_clock - get_master_clock(sync);
 }
 
+int av_sync_is_external_clock_master(const AvSync *sync)
+{
+    return get_master_sync_type(sync) == AV_SYNC_EXTERNAL_CLOCK;
+}
+
+int av_sync_should_late_drop(const AvSync *sync, int step, double time, double frame_timer, double duration)
+{
+    return !step &&
+           get_master_sync_type(sync) != AV_SYNC_VIDEO_MASTER &&
+           time > frame_timer + duration;
+}
+
 void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return)
 {
     if (*paused) {
