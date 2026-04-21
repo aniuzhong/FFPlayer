@@ -66,6 +66,8 @@ void check_external_clock_speed(AvSync *sync);
 double compute_target_delay(double delay, const AvSync *sync);
 double vp_duration(const AvSync *sync, Frame *vp, Frame *nextvp);
 void update_video_pts(AvSync *sync, double pts, int serial);
+double av_sync_audio_master_diff(const AvSync *sync);
+double av_sync_video_master_diff(const AvSync *sync, double video_clock);
 void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return);
 
 #ifdef __cplusplus

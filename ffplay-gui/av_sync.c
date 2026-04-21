@@ -114,6 +114,16 @@ void update_video_pts(AvSync *sync, double pts, int serial)
     sync_clock_to_slave(sync->extclk, sync->vidclk);
 }
 
+double av_sync_audio_master_diff(const AvSync *sync)
+{
+    return get_clock(sync->audclk) - get_master_clock(sync);
+}
+
+double av_sync_video_master_diff(const AvSync *sync, double video_clock)
+{
+    return video_clock - get_master_clock(sync);
+}
+
 void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return)
 {
     if (*paused) {

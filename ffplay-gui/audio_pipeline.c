@@ -39,7 +39,7 @@ static int synchronize_audio(VideoState *is, int nb_samples)
         double diff, avg_diff;
         int min_nb_samples, max_nb_samples;
 
-        diff = get_clock(is->audclk) - get_master_clock(&is->av_sync);
+        diff = av_sync_audio_master_diff(&is->av_sync);
 
         if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD) {
             is->audio_diff_cum = diff + is->audio_diff_avg_coef * is->audio_diff_cum;
