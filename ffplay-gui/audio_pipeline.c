@@ -211,7 +211,13 @@ static void audio_pipeline_sdl_callback(void *opaque, Uint8 *stream, int len)
     }
     is->audio_write_buf_size = is->audio_buf_size - is->audio_buf_index;
     if (!isnan(is->audio_clock)) {
-        set_clock_at(is->audclk, is->audio_clock - (double)(2 * is->audio_hw_buf_size + is->audio_write_buf_size) / is->audio_tgt.bytes_per_sec, is->audio_clock_serial, is->audio_callback_time / 1000000.0);
+        av_sync_update_audclk_from_callback(&is->av_sync,
+                                            is->audio_clock,
+                                            is->audio_clock_serial,
+                                            is->audio_hw_buf_size,
+                                            is->audio_write_buf_size,
+                                            is->audio_tgt.bytes_per_sec,
+                                            is->audio_callback_time);
         av_sync_sync_extclk_to_audclk(&is->av_sync);
     }
 }

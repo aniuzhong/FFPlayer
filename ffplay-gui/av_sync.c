@@ -178,6 +178,11 @@ int av_sync_should_early_drop(const AvSync *sync,
            video_queue_nb_packets;
 }
 
+int av_sync_should_clear_frame_filter_delay(double frame_last_filter_delay)
+{
+    return fabs(frame_last_filter_delay) > AV_NOSYNC_THRESHOLD / 10.0;
+}
+
 void av_sync_sync_extclk_to_audclk(AvSync *sync)
 {
     sync_clock_to_slave(sync->extclk, sync->audclk);
@@ -189,6 +194,20 @@ void av_sync_seek_reset_extclk(AvSync *sync, int by_bytes, int64_t seek_target)
         set_clock(sync->extclk, NAN, 0);
     else
         set_clock(sync->extclk, seek_target / (double)AV_TIME_BASE, 0);
+}
+
+void av_sync_update_audclk_from_callback(AvSync *sync,
+                                         double audio_clock,
+                                         int audio_clock_serial,
+                                         int audio_hw_buf_size,
+                                         int audio_write_buf_size,
+                                         int audio_tgt_bytes_per_sec,
+                                         int64_t audio_callback_time)
+{
+    set_clock_at(sync->audclk,
+                 audio_clock - (double)(2 * audio_hw_buf_size + audio_write_buf_size) / audio_tgt_bytes_per_sec,
+                 audio_clock_serial,
+                 audio_callback_time / 1000000.0);
 }
 
 void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return)

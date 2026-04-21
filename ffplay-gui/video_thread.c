@@ -157,7 +157,7 @@ int video_thread(void *arg)
             fd = frame->opaque_ref ? (FrameData *)frame->opaque_ref->data : NULL;
 
             is->frame_last_filter_delay = av_gettime_relative() / 1000000.0 - is->frame_last_returned_time;
-            if (fabs(is->frame_last_filter_delay) > AV_NOSYNC_THRESHOLD / 10.0)
+            if (av_sync_should_clear_frame_filter_delay(is->frame_last_filter_delay))
                 is->frame_last_filter_delay = 0;
             tb = av_buffersink_get_time_base(filt_out);
             duration = (frame_rate.num && frame_rate.den ? av_q2d((AVRational){frame_rate.den, frame_rate.num}) : 0);
