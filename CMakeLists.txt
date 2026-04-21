@@ -5,6 +5,12 @@ set(CMAKE_C_STANDARD 99)
 include(FetchContent)
 
 set(THIRD_PARTY_DIR "${CMAKE_SOURCE_DIR}/third_party" CACHE PATH "Root directory for bundled third-party packages")
+set(FFPLAY_FETCHCONTENT_DIR "${THIRD_PARTY_DIR}/_fetchcontent" CACHE PATH
+  "Directory used by FetchContent to download/extract source dependencies")
+file(MAKE_DIRECTORY "${FFPLAY_FETCHCONTENT_DIR}")
+set(FETCHCONTENT_BASE_DIR "${FFPLAY_FETCHCONTENT_DIR}")
+set(FETCHCONTENT_UPDATES_DISCONNECTED OFF CACHE BOOL
+  "Allow FetchContent git dependencies to check updates on configure")
 set(FFMPEG_PREBUILT_ROOT "${THIRD_PARTY_DIR}/ffmpeg-8.1-full_build-shared" CACHE PATH
     "gyan FFmpeg tree (include/, lib/, bin/)")
 set(FFMPEG_LIB_DIR "${FFMPEG_PREBUILT_ROOT}/lib" CACHE PATH "Directory containing FFmpeg import libraries (.lib)")
@@ -145,6 +151,7 @@ endif()
 set(_ffplay_gui_target ffplay-gui)
 add_executable(${_ffplay_gui_target} WIN32
   ffplay-gui/main.cpp
+  ffplay-gui/application.cpp
   ffplay-gui/audio_device.c
   ffplay-gui/audio_pipeline.c
   ffplay-gui/audio_thread.c
@@ -189,15 +196,25 @@ target_include_directories(${_ffplay_gui_target} PRIVATE
   "${CMAKE_SOURCE_DIR}/ffplay-gui"
   "${FFMPEG_PREBUILT_ROOT}/include")
 
-set(IMGUI_BUILD_DIR "${CMAKE_BINARY_DIR}/_deps/imgui-src")
-if(NOT EXISTS "${IMGUI_BUILD_DIR}/imgui.h")
-  FetchContent_Declare(
-    imgui
-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG v1.91.9b
-  )
-  FetchContent_MakeAvailable(imgui)
+FetchContent_Declare(
+  imgui
+  GIT_REPOSITORY https://github.com/ocornut/imgui.git
+  GIT_TAG master
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(imgui)
+FetchContent_GetProperties(imgui SOURCE_DIR IMGUI_BUILD_DIR)
+if(NOT IMGUI_BUILD_DIR OR NOT EXISTS "${IMGUI_BUILD_DIR}/imgui.h")
+  message(FATAL_ERROR "Failed to fetch imgui sources from '${IMGUI_BUILD_DIR}'.")
 endif()
+
+FetchContent_Declare(
+  spdlog
+  GIT_REPOSITORY https://github.com/gabime/spdlog.git
+  GIT_TAG v1.x
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(spdlog)
 
 target_sources(${_ffplay_gui_target} PRIVATE
   "${IMGUI_BUILD_DIR}/imgui.cpp"
@@ -220,7 +237,7 @@ foreach(_lib IN LISTS _ffmpeg_libnames)
   target_link_libraries(${_ffplay_gui_target} PRIVATE "${_ff_lib}")
 endforeach()
 
-target_link_libraries(${_ffplay_gui_target} PRIVATE SDL2::SDL2)
+target_link_libraries(${_ffplay_gui_target} PRIVATE SDL2::SDL2 spdlog::spdlog)
 
 if(WIN32)
   target_link_libraries(${_ffplay_gui_target} PRIVATE shell32 comdlg32)
