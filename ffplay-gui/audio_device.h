@@ -1,11 +1,25 @@
 #ifndef FFPLAY_GUI_AUDIO_DEVICE_H
 #define FFPLAY_GUI_AUDIO_DEVICE_H
 
-#include "video_state.h"
+#include <SDL.h>
+
+#include <libavutil/channel_layout.h>
+#include <libavutil/samplefmt.h>
+
+#define SDL_AUDIO_MIN_BUFFER_SIZE 512
+#define SDL_AUDIO_MAX_CALLBACKS_PER_SEC 30
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct AudioParams {
+    int freq;
+    AVChannelLayout ch_layout;
+    enum AVSampleFormat fmt;
+    int frame_size;
+    int bytes_per_sec;
+} AudioParams;
 
 typedef struct AudioDevice {
     SDL_AudioDeviceID id;

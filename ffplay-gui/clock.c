@@ -1,11 +1,11 @@
-#include "clock.h"
-
 #include <math.h>
 
+#include <libavutil/common.h>
+#include <libavutil/mem.h>
+#include <libavutil/time.h>
+
+#include "clock.h"
 #include "packet_queue.h"
-#include "libavutil/common.h"
-#include "libavutil/mem.h"
-#include "libavutil/time.h"
 
 #define CLOCK_NOSYNC_THRESHOLD 10.0
 
@@ -14,10 +14,10 @@ struct Clock {
     double pts_drift;
     double last_updated;
     double speed;
-    int serial;
-    int paused;
-    int (*queue_serial_getter)(void *opaque);
-    void *queue_serial_opaque;
+    int    serial;
+    int    paused;
+    int    (*queue_serial_getter)(void *opaque); // Function pointer to get the serial of the packet queue
+    void   *queue_serial_opaque; // Opaque pointer to the packet queue
 };
 
 static int packet_queue_serial_getter(void *opaque)

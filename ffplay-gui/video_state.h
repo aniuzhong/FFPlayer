@@ -12,6 +12,7 @@
 #include "libavformat/avformat.h"
 #include "libavfilter/avfilter.h"
 
+#include "audio_device.h"
 #include "decoder.h"
 #include "clock.h"
 
@@ -32,9 +33,6 @@ typedef struct RenderParams {
 #define MAX_QUEUE_SIZE (15 * 1024 * 1024)
 #define MIN_FRAMES 25
 
-#define SDL_AUDIO_MIN_BUFFER_SIZE 512
-#define SDL_AUDIO_MAX_CALLBACKS_PER_SEC 30
-
 #define SDL_VOLUME_STEP (0.75)
 
 #define SAMPLE_CORRECTION_PERCENT_MAX 10
@@ -50,14 +48,6 @@ typedef struct RenderParams {
 #define USE_ONEPASS_SUBTITLE_RENDER 1
 
 #define FF_QUIT_EVENT    (SDL_USEREVENT + 2)
-
-typedef struct AudioParams {
-    int freq;
-    AVChannelLayout ch_layout;
-    enum AVSampleFormat fmt;
-    int frame_size;
-    int bytes_per_sec;
-} AudioParams;
 
 enum ShowMode {
     SHOW_MODE_NONE = -1, SHOW_MODE_VIDEO = 0, SHOW_MODE_WAVES, SHOW_MODE_RDFT, SHOW_MODE_NB
