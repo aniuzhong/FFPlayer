@@ -95,13 +95,13 @@ endif()
 
 set(_ffplay_target ffplay)
 add_executable(${_ffplay_target}
-  src/ffplay.c
-  src/cmdutils.c
-  src/opt_common.c)
+  ffplay-cli/ffplay.c
+  ffplay-cli/cmdutils.c
+  ffplay-cli/opt_common.c)
 target_include_directories(${_ffplay_target} PRIVATE
   "${FFPLAY_GEN_DIR}"
-  "${CMAKE_SOURCE_DIR}/src/shim/include"
-  "${CMAKE_SOURCE_DIR}/src"
+  "${CMAKE_SOURCE_DIR}/ffplay-cli/shim/include"
+  "${CMAKE_SOURCE_DIR}/ffplay-cli"
   "${FFMPEG_PREBUILT_ROOT}/include")
 
 set_target_properties(${_ffplay_target} PROPERTIES CXX_STANDARD 17)
