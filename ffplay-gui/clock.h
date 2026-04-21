@@ -95,11 +95,6 @@ void set_clock(Clock *c, double pts, int serial);
 void set_clock_speed(Clock *c, double speed);
 
 /**
- * Initialize clock with generic serial getter callback.
- */
-void init_clock_with_serial_getter(Clock *c, int (*queue_serial_getter)(void *opaque), void *queue_serial_opaque);
-
-/**
  * Pull clock to slave clock if drift exceeds threshold.
  */
 void sync_clock_to_slave(Clock *c, Clock *slave);

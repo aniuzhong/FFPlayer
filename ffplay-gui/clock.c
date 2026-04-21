@@ -30,6 +30,15 @@ static int clock_serial_getter(void *opaque)
     return clock_get_serial((Clock *)opaque);
 }
 
+static void init_clock_with_serial_getter(Clock *c, int (*queue_serial_getter)(void *opaque), void *queue_serial_opaque)
+{
+    c->speed = 1.0;
+    c->paused = 0;
+    c->queue_serial_getter = queue_serial_getter;
+    c->queue_serial_opaque = queue_serial_opaque;
+    set_clock(c, NAN, -1);
+}
+
 Clock *clock_create(void)
 {
     return av_mallocz(sizeof(Clock));
@@ -113,15 +122,6 @@ void set_clock_speed(Clock *c, double speed)
 {
     set_clock(c, get_clock(c), c->serial);
     c->speed = speed;
-}
-
-void init_clock_with_serial_getter(Clock *c, int (*queue_serial_getter)(void *opaque), void *queue_serial_opaque)
-{
-    c->speed = 1.0;
-    c->paused = 0;
-    c->queue_serial_getter = queue_serial_getter;
-    c->queue_serial_opaque = queue_serial_opaque;
-    set_clock(c, NAN, -1);
 }
 
 void sync_clock_to_slave(Clock *c, Clock *slave)
