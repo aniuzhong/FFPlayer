@@ -1,7 +1,16 @@
 #ifndef FFPLAY_GUI_CLOCK_H
 #define FFPLAY_GUI_CLOCK_H
 
-#include "video_state.h"
+typedef struct Clock {
+    double pts;
+    double pts_drift;
+    double last_updated;
+    double speed;
+    int serial;
+    int paused;
+    int (*queue_serial_getter)(void *opaque);
+    void *queue_serial_opaque;
+} Clock;
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,12 +22,6 @@ void set_clock(Clock *c, double pts, int serial);
 void set_clock_speed(Clock *c, double speed);
 void init_clock_with_serial_getter(Clock *c, int (*queue_serial_getter)(void *opaque), void *queue_serial_opaque);
 void sync_clock_to_slave(Clock *c, Clock *slave);
-int get_master_sync_type(VideoState *is);
-double get_master_clock(VideoState *is);
-void check_external_clock_speed(VideoState *is);
-double compute_target_delay(double delay, VideoState *is);
-double vp_duration(VideoState *is, Frame *vp, Frame *nextvp);
-void update_video_pts(VideoState *is, double pts, int serial);
 
 #ifdef __cplusplus
 }

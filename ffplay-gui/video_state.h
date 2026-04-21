@@ -13,6 +13,7 @@
 #include "libavfilter/avfilter.h"
 
 #include "decoder.h"
+#include "clock.h"
 
 #define VIDEO_BACKGROUND_TILE_SIZE 64
 
@@ -30,24 +31,13 @@ typedef struct RenderParams {
 
 #define MAX_QUEUE_SIZE (15 * 1024 * 1024)
 #define MIN_FRAMES 25
-#define EXTERNAL_CLOCK_MIN_FRAMES 2
-#define EXTERNAL_CLOCK_MAX_FRAMES 10
 
 #define SDL_AUDIO_MIN_BUFFER_SIZE 512
 #define SDL_AUDIO_MAX_CALLBACKS_PER_SEC 30
 
 #define SDL_VOLUME_STEP (0.75)
 
-#define AV_SYNC_THRESHOLD_MIN 0.04
-#define AV_SYNC_THRESHOLD_MAX 0.1
-#define AV_SYNC_FRAMEDUP_THRESHOLD 0.1
-#define AV_NOSYNC_THRESHOLD 10.0
-
 #define SAMPLE_CORRECTION_PERCENT_MAX 10
-
-#define EXTERNAL_CLOCK_SPEED_MIN  0.900
-#define EXTERNAL_CLOCK_SPEED_MAX  1.010
-#define EXTERNAL_CLOCK_SPEED_STEP 0.001
 
 #define AUDIO_DIFF_AVG_NB   20
 
@@ -68,23 +58,6 @@ typedef struct AudioParams {
     int frame_size;
     int bytes_per_sec;
 } AudioParams;
-
-typedef struct Clock {
-    double pts;
-    double pts_drift;
-    double last_updated;
-    double speed;
-    int serial;
-    int paused;
-    int (*queue_serial_getter)(void *opaque);
-    void *queue_serial_opaque;
-} Clock;
-
-enum {
-    AV_SYNC_AUDIO_MASTER,
-    AV_SYNC_VIDEO_MASTER,
-    AV_SYNC_EXTERNAL_CLOCK,
-};
 
 enum ShowMode {
     SHOW_MODE_NONE = -1, SHOW_MODE_VIDEO = 0, SHOW_MODE_WAVES, SHOW_MODE_RDFT, SHOW_MODE_NB

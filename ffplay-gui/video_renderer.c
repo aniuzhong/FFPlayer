@@ -4,6 +4,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "av_sync.h"
 #include "clock.h"
 #include "stream.h"
 #include "libavutil/common.h"

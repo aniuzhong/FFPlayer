@@ -32,6 +32,7 @@ extern "C" {
 #endif
 
 #include "clock.h"
+#include "av_sync.h"
 #include "audio_pipeline.h"
 #include "demuxer.h"
 #include "filter.h"

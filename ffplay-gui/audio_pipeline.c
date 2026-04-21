@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "audio_device.h"
+#include "av_sync.h"
 #include "clock.h"
 #include "libavutil/common.h"
 #include "libavutil/error.h"

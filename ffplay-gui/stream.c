@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "clock.h"
+#include "av_sync.h"
 #include "demuxer.h"
 #include "filter.h"
 #include "video_renderer.h"

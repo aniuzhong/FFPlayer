@@ -2,6 +2,7 @@
 
 #include <math.h>
 
+#include "av_sync.h"
 #include "clock.h"
 #include "filter.h"
 #include "video_renderer.h"
