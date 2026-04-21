@@ -223,11 +223,7 @@ int read_thread(void *arg)
                     packet_queue_flush(is->subtitleq);
                 if (is->video_stream >= 0)
                     packet_queue_flush(is->videoq);
-                if (is->seek_flags & AVSEEK_FLAG_BYTE) {
-                   set_clock(is->extclk, NAN, 0);
-                } else {
-                   set_clock(is->extclk, seek_target / (double)AV_TIME_BASE, 0);
-                }
+                av_sync_seek_reset_extclk(&is->av_sync, !!(is->seek_flags & AVSEEK_FLAG_BYTE), seek_target);
             }
             is->seek_req = 0;
             is->queue_attachments_req = 1;

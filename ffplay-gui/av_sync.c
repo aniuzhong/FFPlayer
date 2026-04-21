@@ -173,6 +173,14 @@ void av_sync_sync_extclk_to_audclk(AvSync *sync)
     sync_clock_to_slave(sync->extclk, sync->audclk);
 }
 
+void av_sync_seek_reset_extclk(AvSync *sync, int by_bytes, int64_t seek_target)
+{
+    if (by_bytes)
+        set_clock(sync->extclk, NAN, 0);
+    else
+        set_clock(sync->extclk, seek_target / (double)AV_TIME_BASE, 0);
+}
+
 void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return)
 {
     if (*paused) {
