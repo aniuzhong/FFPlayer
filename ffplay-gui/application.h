@@ -1,7 +1,7 @@
 #ifndef FFPLAY_GUI_APPLICATION_H
 #define FFPLAY_GUI_APPLICATION_H
 
-#include <stdint.h>
+#include <cstdint>
 #include <string>
 
 #ifdef __cplusplus
@@ -15,7 +15,23 @@ extern "C" {
 
 class Application {
 public:
-    int Run();
+    int Execute();
+
+private:
+    static std::string FormatDuration(double seconds);
+    void InitImGui();
+    void ShutdownImGui();
+    void RefreshWindowTitle();
+    void SeekToRatio(float ratio);
+    void RenderImGui();
+    void RenderLogPanel(float bar_height);
+    bool OpenFileDialogAndPlay();
+    [[noreturn]] void DoExit(VideoState *is);
+    void ToggleFullScreen();
+    void RefreshLoopWaitEvent(SDL_Event *event);
+    void InitWindowAndRenderer();
+    void ConfigureVideoRenderer();
+    void EventLoop();
 
 private:
     SDL_Window *window_ = nullptr;
@@ -37,22 +53,6 @@ private:
     bool log_auto_scroll_ = true;
     bool log_wrap_lines_ = true;
     int log_level_filter_ = 0;
-
-    static std::string FormatDuration(double seconds);
-
-    void InitImGui();
-    void ShutdownImGui();
-    void RefreshWindowTitle();
-    void SeekToRatio(float ratio);
-    void RenderImGui();
-    void RenderLogPanel(float bar_height);
-    bool OpenFileDialogAndPlay();
-    [[noreturn]] void DoExit(VideoState *is);
-    void ToggleFullScreen();
-    void RefreshLoopWaitEvent(SDL_Event *event);
-    void InitWindowAndRenderer();
-    void ConfigureVideoRenderer();
-    void EventLoop();
 };
 
 #endif

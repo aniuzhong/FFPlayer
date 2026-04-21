@@ -1,20 +1,11 @@
+#include <windows.h>
+
 #include "application.h"
 
-#ifdef _WIN32
 #undef main
-#include <windows.h>
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
     Application app;
-    return app.Run();
+    return app.Execute();
 }
-#else
-int main(int argc, char **argv)
-{
-    (void)argc;
-    (void)argv;
-    Application app;
-    return app.Run();
-}
-#endif

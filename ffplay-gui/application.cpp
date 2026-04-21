@@ -37,12 +37,6 @@ extern "C" {
 #include "filter.h"
 #include "stream.h"
 
-extern "C" {
-void init_dynload(void)
-{
-}
-}
-
 const char program_name[] = "ffplay";
 const int program_birth_year = 2003;
 
@@ -155,11 +149,10 @@ static const char *video_window_title(VideoState *is, const char *fallback)
     return (title && title[0]) ? title : fallback;
 }
 
-int Application::Run()
+int Application::Execute()
 {
     int flags;
 
-    init_dynload();
     InitUiLogger();
     av_log_set_callback(UiAvLogCallback);
     av_log_set_flags(AV_LOG_SKIP_REPEATED);
@@ -185,7 +178,7 @@ int Application::Run()
     InitWindowAndRenderer();
     ConfigureVideoRenderer();
     SDL_ShowWindow(window_);
-    SDL_SetWindowTitle(window_, "ffplay-gui - No media loaded");
+    SDL_SetWindowTitle(window_, "ffplay-gui");
 
     audio_device_set_open_cb(&audio_device_, audio_pipeline_open);
     InitImGui();
