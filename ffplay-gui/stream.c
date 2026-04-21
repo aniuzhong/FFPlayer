@@ -18,16 +18,6 @@
 #define SUBPICTURE_QUEUE_SIZE 16
 #define SAMPLE_QUEUE_SIZE 9
 
-static int packet_queue_serial_getter(void *opaque)
-{
-    return packet_queue_get_serial((PacketQueue *)opaque);
-}
-
-static int clock_serial_getter(void *opaque)
-{
-    return ((Clock *)opaque)->serial;
-}
-
 void stream_seek(VideoState *is, int64_t pos, int64_t rel, int by_bytes)
 {
     if (!is->seek_req) {
@@ -44,17 +34,17 @@ void stream_seek(VideoState *is, int64_t pos, int64_t rel, int by_bytes)
 void stream_toggle_pause(VideoState *is)
 {
     if (is->paused) {
-        is->frame_timer += av_gettime_relative() / 1000000.0 - clock_get_last_updated(&is->vidclk);
+        is->frame_timer += av_gettime_relative() / 1000000.0 - clock_get_last_updated(is->vidclk);
         if (is->read_pause_return != AVERROR(ENOSYS)) {
-            clock_set_paused(&is->vidclk, 0);
+            clock_set_paused(is->vidclk, 0);
         }
-        set_clock(&is->vidclk, get_clock(&is->vidclk), clock_get_serial(&is->vidclk));
+        set_clock(is->vidclk, get_clock(is->vidclk), clock_get_serial(is->vidclk));
     }
-    set_clock(&is->extclk, get_clock(&is->extclk), clock_get_serial(&is->extclk));
+    set_clock(is->extclk, get_clock(is->extclk), clock_get_serial(is->extclk));
     is->paused = !is->paused;
-    clock_set_paused(&is->audclk, is->paused);
-    clock_set_paused(&is->vidclk, is->paused);
-    clock_set_paused(&is->extclk, is->paused);
+    clock_set_paused(is->audclk, is->paused);
+    clock_set_paused(is->vidclk, is->paused);
+    clock_set_paused(is->extclk, is->paused);
 }
 
 void stream_toggle_pause_and_clear_step(VideoState *is)
@@ -262,9 +252,14 @@ VideoState *stream_open(const char *filename,
         goto fail;
     }
 
-    init_clock_with_serial_getter(&is->vidclk, packet_queue_serial_getter, is->videoq);
-    init_clock_with_serial_getter(&is->audclk, packet_queue_serial_getter, is->audioq);
-    init_clock_with_serial_getter(&is->extclk, clock_serial_getter, &is->extclk);
+    is->vidclk = clock_create();
+    is->audclk = clock_create();
+    is->extclk = clock_create();
+    if (!is->vidclk || !is->audclk || !is->extclk)
+        goto fail;
+    clock_init_from_packet_queue(is->vidclk, is->videoq);
+    clock_init_from_packet_queue(is->audclk, is->audioq);
+    clock_init_from_clock(is->extclk, is->extclk);
     is->audio_clock_serial = -1;
     is->audio_volume = SDL_MIX_MAXVOLUME;
     is->muted = 0;
@@ -533,6 +528,9 @@ void stream_close(VideoState *is)
         SDL_DestroyTexture(is->vid_texture);
     if (is->sub_texture)
         SDL_DestroyTexture(is->sub_texture);
+    clock_destroy(&is->audclk);
+    clock_destroy(&is->vidclk);
+    clock_destroy(&is->extclk);
     av_free(is);
 }
 

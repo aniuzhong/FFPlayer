@@ -82,9 +82,9 @@ typedef struct VideoState {
     AVFormatContext *ic;
     int realtime;
 
-    Clock audclk;
-    Clock vidclk;
-    Clock extclk;
+    Clock *audclk;
+    Clock *vidclk;
+    Clock *extclk;
 
     FrameQueue *pictq;
     FrameQueue *subpq;

@@ -20,13 +20,13 @@ double get_master_clock(VideoState *is)
 
     switch (get_master_sync_type(is)) {
         case AV_SYNC_VIDEO_MASTER:
-            val = get_clock(&is->vidclk);
+            val = get_clock(is->vidclk);
             break;
         case AV_SYNC_AUDIO_MASTER:
-            val = get_clock(&is->audclk);
+            val = get_clock(is->audclk);
             break;
         default:
-            val = get_clock(&is->extclk);
+            val = get_clock(is->extclk);
             break;
     }
     return val;
@@ -36,14 +36,14 @@ void check_external_clock_speed(VideoState *is)
 {
     if (is->video_stream >= 0 && packet_queue_get_nb_packets(is->videoq) <= EXTERNAL_CLOCK_MIN_FRAMES ||
         is->audio_stream >= 0 && packet_queue_get_nb_packets(is->audioq) <= EXTERNAL_CLOCK_MIN_FRAMES) {
-        set_clock_speed(&is->extclk, FFMAX(EXTERNAL_CLOCK_SPEED_MIN, clock_get_speed(&is->extclk) - EXTERNAL_CLOCK_SPEED_STEP));
+        set_clock_speed(is->extclk, FFMAX(EXTERNAL_CLOCK_SPEED_MIN, clock_get_speed(is->extclk) - EXTERNAL_CLOCK_SPEED_STEP));
     } else if ((is->video_stream < 0 || packet_queue_get_nb_packets(is->videoq) > EXTERNAL_CLOCK_MAX_FRAMES) &&
                (is->audio_stream < 0 || packet_queue_get_nb_packets(is->audioq) > EXTERNAL_CLOCK_MAX_FRAMES)) {
-        set_clock_speed(&is->extclk, FFMIN(EXTERNAL_CLOCK_SPEED_MAX, clock_get_speed(&is->extclk) + EXTERNAL_CLOCK_SPEED_STEP));
+        set_clock_speed(is->extclk, FFMIN(EXTERNAL_CLOCK_SPEED_MAX, clock_get_speed(is->extclk) + EXTERNAL_CLOCK_SPEED_STEP));
     } else {
-        double speed = clock_get_speed(&is->extclk);
+        double speed = clock_get_speed(is->extclk);
         if (speed != 1.0)
-            set_clock_speed(&is->extclk, speed + EXTERNAL_CLOCK_SPEED_STEP * (1.0 - speed) / fabs(1.0 - speed));
+            set_clock_speed(is->extclk, speed + EXTERNAL_CLOCK_SPEED_STEP * (1.0 - speed) / fabs(1.0 - speed));
     }
 }
 
@@ -52,7 +52,7 @@ double compute_target_delay(double delay, VideoState *is)
     double sync_threshold, diff = 0;
 
     if (get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER) {
-        diff = get_clock(&is->vidclk) - get_master_clock(is);
+        diff = get_clock(is->vidclk) - get_master_clock(is);
 
         sync_threshold = FFMAX(AV_SYNC_THRESHOLD_MIN, FFMIN(AV_SYNC_THRESHOLD_MAX, delay));
         if (!isnan(diff) && fabs(diff) < is->max_frame_duration) {
@@ -86,6 +86,6 @@ double vp_duration(VideoState *is, Frame *vp, Frame *nextvp)
 
 void update_video_pts(VideoState *is, double pts, int serial)
 {
-    set_clock(&is->vidclk, pts, serial);
-    sync_clock_to_slave(&is->extclk, &is->vidclk);
+    set_clock(is->vidclk, pts, serial);
+    sync_clock_to_slave(is->extclk, is->vidclk);
 }

@@ -2,10 +2,45 @@
 
 #include <math.h>
 
+#include "packet_queue.h"
 #include "libavutil/common.h"
+#include "libavutil/mem.h"
 #include "libavutil/time.h"
 
 #define CLOCK_NOSYNC_THRESHOLD 10.0
+
+struct Clock {
+    double pts;
+    double pts_drift;
+    double last_updated;
+    double speed;
+    int serial;
+    int paused;
+    int (*queue_serial_getter)(void *opaque);
+    void *queue_serial_opaque;
+};
+
+static int packet_queue_serial_getter(void *opaque)
+{
+    return packet_queue_get_serial((PacketQueue *)opaque);
+}
+
+static int clock_serial_getter(void *opaque)
+{
+    return clock_get_serial((Clock *)opaque);
+}
+
+Clock *clock_create(void)
+{
+    return av_mallocz(sizeof(Clock));
+}
+
+void clock_destroy(Clock **c)
+{
+    if (!c || !*c)
+        return;
+    av_freep(c);
+}
 
 double get_clock(Clock *c)
 {
@@ -48,6 +83,16 @@ int clock_get_paused(const Clock *c)
 void clock_set_paused(Clock *c, int paused)
 {
     c->paused = paused;
+}
+
+void clock_init_from_packet_queue(Clock *c, PacketQueue *q)
+{
+    init_clock_with_serial_getter(c, packet_queue_serial_getter, q);
+}
+
+void clock_init_from_clock(Clock *c, Clock *serial_source)
+{
+    init_clock_with_serial_getter(c, clock_serial_getter, serial_source);
 }
 
 void set_clock_at(Clock *c, double pts, int serial, double time)
