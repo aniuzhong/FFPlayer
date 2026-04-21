@@ -55,18 +55,16 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
 
         frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(is->ic, is->video_st, frame);
 
-        if (get_master_sync_type(&is->av_sync) != AV_SYNC_VIDEO_MASTER) {
-            if (frame->pts != AV_NOPTS_VALUE) {
-                double diff = av_sync_video_master_diff(&is->av_sync, dpts);
-                if (!isnan(diff) && fabs(diff) < AV_NOSYNC_THRESHOLD &&
-                    diff - is->frame_last_filter_delay < 0 &&
-                    is->viddec.pkt_serial == clock_get_serial(is->vidclk) &&
-                    packet_queue_get_nb_packets(is->videoq)) {
-                    is->frame_drops_early++;
-                    av_frame_unref(frame);
-                    got_picture = 0;
-                }
-            }
+        if (frame->pts != AV_NOPTS_VALUE &&
+            av_sync_should_early_drop(&is->av_sync,
+                                      dpts,
+                                      is->frame_last_filter_delay,
+                                      is->viddec.pkt_serial,
+                                      clock_get_serial(is->vidclk),
+                                      packet_queue_get_nb_packets(is->videoq))) {
+            is->frame_drops_early++;
+            av_frame_unref(frame);
+            got_picture = 0;
         }
     }
 

@@ -148,6 +148,26 @@ int av_sync_should_late_drop(const AvSync *sync, int step, double time, double f
            time > frame_timer + duration;
 }
 
+int av_sync_should_early_drop(const AvSync *sync,
+                              double video_clock,
+                              double frame_last_filter_delay,
+                              int video_pkt_serial,
+                              int video_clock_serial,
+                              int video_queue_nb_packets)
+{
+    double diff;
+
+    if (get_master_sync_type(sync) == AV_SYNC_VIDEO_MASTER)
+        return 0;
+
+    diff = av_sync_video_master_diff(sync, video_clock);
+    return !isnan(diff) &&
+           fabs(diff) < AV_NOSYNC_THRESHOLD &&
+           diff - frame_last_filter_delay < 0 &&
+           video_pkt_serial == video_clock_serial &&
+           video_queue_nb_packets;
+}
+
 void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return)
 {
     if (*paused) {
