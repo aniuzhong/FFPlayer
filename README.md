@@ -58,8 +58,9 @@ cmake --build build --config Release
 
 3. 解码器内部是否仍可用 Vulkan 由 -hwaccel 与 av_hwdevice_ctx_create 决定。
 
-### feature/ffplay-imgui
+## feature/ffplay-imgui
 
 - 去掉原版 ffplay.exe 的命令行功能
-- 将 ffplay.c 拆分成更多的文件
+- 将 ffplay.c 拆分成更多的文件（文件层面模块化，但运行时边界仍然混乱）
+    - 真正的**模块接口**被 `VideoState` 吞掉
 - 引入 ImGUI
