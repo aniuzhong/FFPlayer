@@ -414,7 +414,7 @@ void Application::RenderImGui()
         ImGui::SetNextItemWidth(volume_w);
         const char *volume_fmt = volume_w >= 72.0f ? "%.0f%%" : "";
         if (ImGui::SliderFloat("##volume", &volume_percent, 0.0f, 100.0f, volume_fmt)) {
-            stream_->audio_volume = av_clip((int)((volume_percent / 100.0f) * SDL_MIX_MAXVOLUME), 0, SDL_MIX_MAXVOLUME);
+            stream_set_volume(stream_, (int)((volume_percent / 100.0f) * SDL_MIX_MAXVOLUME));
         }
         ImGui::SameLine(0.0f, margin);
         if (ImGui::Button(show_log_panel_ ? "Hide Log" : "Log"))
@@ -546,7 +546,7 @@ bool Application::OpenFileDialogAndPlay()
     }
     stream_toggle_pause_and_clear_step(stream_);
     stream_toggle_mute(stream_);
-    stream_->force_refresh = 1;
+    stream_request_refresh(stream_);
     stable_progress_ratio_ = 0.0f;
     stable_progress_ready_ = false;
 
@@ -679,7 +679,7 @@ void Application::EventLoop()
             if (event.key.keysym.sym == SDLK_f) {
                 ToggleFullScreen();
                 if (stream_)
-                    stream_->force_refresh = 1;
+                    stream_request_refresh(stream_);
                 break;
             }
             if (!stream_)
@@ -762,7 +762,7 @@ do_seek:
                 if (av_gettime_relative() - last_mouse_left_click <= 500000) {
                     ToggleFullScreen();
                     if (stream_)
-                        stream_->force_refresh = 1;
+                        stream_request_refresh(stream_);
                     last_mouse_left_click = 0;
                 } else {
                     last_mouse_left_click = av_gettime_relative();
@@ -785,16 +785,11 @@ do_seek:
             switch (event.window.event) {
             case SDL_WINDOWEVENT_SIZE_CHANGED:
                 if (stream_) {
-                    stream_->width  = event.window.data1;
-                    stream_->height = event.window.data2;
-                    if (stream_->vis_texture) {
-                        SDL_DestroyTexture(stream_->vis_texture);
-                        stream_->vis_texture = nullptr;
-                    }
+                    stream_handle_window_size_changed(stream_, event.window.data1, event.window.data2);
                 }
             case SDL_WINDOWEVENT_EXPOSED:
                 if (stream_)
-                    stream_->force_refresh = 1;
+                    stream_request_refresh(stream_);
             }
             break;
         case SDL_QUIT:

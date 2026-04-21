@@ -74,6 +74,33 @@ void stream_toggle_audio_display(VideoState *is)
     }
 }
 
+void stream_set_volume(VideoState *is, int volume)
+{
+    if (!is)
+        return;
+    is->audio_volume = av_clip(volume, 0, SDL_MIX_MAXVOLUME);
+}
+
+void stream_request_refresh(VideoState *is)
+{
+    if (!is)
+        return;
+    is->force_refresh = 1;
+}
+
+void stream_handle_window_size_changed(VideoState *is, int width, int height)
+{
+    if (!is)
+        return;
+    is->width = width;
+    is->height = height;
+    if (is->vis_texture) {
+        SDL_DestroyTexture(is->vis_texture);
+        is->vis_texture = NULL;
+    }
+    stream_request_refresh(is);
+}
+
 void stream_adjust_volume_step(VideoState *is, int sign, double step)
 {
     double volume_level;
@@ -86,9 +113,8 @@ void stream_adjust_volume_step(VideoState *is, int sign, double step)
         (20 * log(is->audio_volume / (double)SDL_MIX_MAXVOLUME) / log(10)) :
         -1000.0;
     new_volume = lrint(SDL_MIX_MAXVOLUME * pow(10.0, (volume_level + sign * step) / 20.0));
-    is->audio_volume = av_clip(
-        is->audio_volume == new_volume ? (is->audio_volume + sign) : new_volume,
-        0, SDL_MIX_MAXVOLUME);
+    stream_set_volume(is,
+                      is->audio_volume == new_volume ? (is->audio_volume + sign) : new_volume);
 }
 
 void stream_step(VideoState *is)
