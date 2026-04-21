@@ -67,6 +67,7 @@ double av_sync_compute_frame_delay(const AvSync *sync, Frame *lastvp, Frame *vp)
 double compute_target_delay(double delay, const AvSync *sync);
 double vp_duration(const AvSync *sync, Frame *vp, Frame *nextvp);
 void update_video_pts(AvSync *sync, double pts, int serial);
+void av_sync_update_video_pts_if_valid(AvSync *sync, double pts, int serial);
 double av_sync_audio_master_diff(const AvSync *sync);
 double av_sync_video_master_diff(const AvSync *sync, double video_clock);
 int av_sync_is_external_clock_master(const AvSync *sync);

@@ -547,8 +547,7 @@ retry:
                 is->frame_timer = time;
 
             frame_queue_lock(is->pictq);
-            if (!isnan(vp->pts))
-                update_video_pts(&is->av_sync, vp->pts, vp->serial);
+            av_sync_update_video_pts_if_valid(&is->av_sync, vp->pts, vp->serial);
             frame_queue_unlock(is->pictq);
 
             if (frame_queue_nb_remaining(is->pictq) > 1) {

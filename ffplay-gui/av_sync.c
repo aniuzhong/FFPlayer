@@ -120,6 +120,12 @@ void update_video_pts(AvSync *sync, double pts, int serial)
     sync_clock_to_slave(sync->extclk, sync->vidclk);
 }
 
+void av_sync_update_video_pts_if_valid(AvSync *sync, double pts, int serial)
+{
+    if (!isnan(pts))
+        update_video_pts(sync, pts, serial);
+}
+
 double av_sync_audio_master_diff(const AvSync *sync)
 {
     return get_clock(sync->audclk) - get_master_clock(sync);
