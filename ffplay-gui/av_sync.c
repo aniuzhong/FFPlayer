@@ -168,6 +168,11 @@ int av_sync_should_early_drop(const AvSync *sync,
            video_queue_nb_packets;
 }
 
+void av_sync_sync_extclk_to_audclk(AvSync *sync)
+{
+    sync_clock_to_slave(sync->extclk, sync->audclk);
+}
+
 void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return)
 {
     if (*paused) {

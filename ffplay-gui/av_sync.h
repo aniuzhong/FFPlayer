@@ -78,6 +78,8 @@ int av_sync_should_early_drop(const AvSync *sync,
                               int video_pkt_serial,
                               int video_clock_serial,
                               int video_queue_nb_packets);
+void av_sync_sync_extclk_to_audclk(AvSync *sync);
+void av_sync_seek_reset_extclk(AvSync *sync, int by_bytes, int64_t seek_target);
 void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return);
 
 #ifdef __cplusplus
