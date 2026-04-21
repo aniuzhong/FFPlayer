@@ -9,6 +9,7 @@
 #include "libavutil/mathematics.h"
 #include "libavutil/time.h"
 
+/* Context binding */
 void av_sync_bind(AvSync *sync,
                   Clock *audclk,
                   Clock *vidclk,
@@ -31,6 +32,7 @@ void av_sync_bind(AvSync *sync,
     sync->max_frame_duration = max_frame_duration;
 }
 
+/* Master-clock query */
 int get_master_sync_type(const AvSync *sync)
 {
     if (sync->audio_st && *sync->audio_st)
@@ -61,6 +63,7 @@ double get_master_clock(const AvSync *sync)
     return val;
 }
 
+/* Sync control and delay calculation */
 void check_external_clock_speed(AvSync *sync)
 {
     if (*sync->video_stream >= 0 && packet_queue_get_nb_packets(sync->videoq) <= EXTERNAL_CLOCK_MIN_FRAMES ||
@@ -82,6 +85,7 @@ double av_sync_compute_frame_delay(const AvSync *sync, Frame *lastvp, Frame *vp)
     return compute_target_delay(last_duration, sync);
 }
 
+/* Keep this low-level helper exposed for compatibility. */
 double compute_target_delay(double delay, const AvSync *sync)
 {
     double sync_threshold, diff = 0;
@@ -119,6 +123,7 @@ double vp_duration(const AvSync *sync, Frame *vp, Frame *nextvp)
     }
 }
 
+/* Clock update helpers */
 void update_video_pts(AvSync *sync, double pts, int serial)
 {
     set_clock(sync->vidclk, pts, serial);
@@ -210,6 +215,7 @@ void av_sync_update_audclk_from_callback(AvSync *sync,
                  audio_callback_time / 1000000.0);
 }
 
+/* Pause/resume orchestration helper */
 void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return)
 {
     if (*paused) {

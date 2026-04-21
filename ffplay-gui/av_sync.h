@@ -50,6 +50,7 @@ enum {
 extern "C" {
 #endif
 
+/* Context binding */
 void av_sync_bind(AvSync *sync,
                   Clock *audclk,
                   Clock *vidclk,
@@ -60,15 +61,33 @@ void av_sync_bind(AvSync *sync,
                   int *audio_stream,
                   int *video_stream,
                   double *max_frame_duration);
+
+/* Master-clock query */
 int get_master_sync_type(const AvSync *sync);
 int av_sync_is_audio_master(const AvSync *sync);
 double get_master_clock(const AvSync *sync);
+
+/* Sync control and delay calculation */
 void check_external_clock_speed(AvSync *sync);
 double av_sync_compute_frame_delay(const AvSync *sync, Frame *lastvp, Frame *vp);
 double compute_target_delay(double delay, const AvSync *sync);
 double vp_duration(const AvSync *sync, Frame *vp, Frame *nextvp);
+
+/* Clock update helpers */
 void update_video_pts(AvSync *sync, double pts, int serial);
 void av_sync_update_video_pts_if_valid(AvSync *sync, double pts, int serial);
+void av_sync_sync_extclk_to_audclk(AvSync *sync);
+void av_sync_seek_reset_extclk(AvSync *sync, int by_bytes, int64_t seek_target);
+void av_sync_update_audclk_from_callback(AvSync *sync,
+                                         double audio_clock,
+                                         int audio_clock_serial,
+                                         int audio_hw_buf_size,
+                                         int audio_write_buf_size,
+                                         int audio_tgt_bytes_per_sec,
+                                         int64_t audio_callback_time);
+void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return);
+
+/* Decision helpers */
 double av_sync_audio_master_diff(const AvSync *sync);
 double av_sync_video_master_diff(const AvSync *sync, double video_clock);
 int av_sync_is_external_clock_master(const AvSync *sync);
@@ -81,16 +100,6 @@ int av_sync_should_early_drop(const AvSync *sync,
                               int video_clock_serial,
                               int video_queue_nb_packets);
 int av_sync_should_clear_frame_filter_delay(double frame_last_filter_delay);
-void av_sync_sync_extclk_to_audclk(AvSync *sync);
-void av_sync_seek_reset_extclk(AvSync *sync, int by_bytes, int64_t seek_target);
-void av_sync_update_audclk_from_callback(AvSync *sync,
-                                         double audio_clock,
-                                         int audio_clock_serial,
-                                         int audio_hw_buf_size,
-                                         int audio_write_buf_size,
-                                         int audio_tgt_bytes_per_sec,
-                                         int64_t audio_callback_time);
-void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return);
 
 #ifdef __cplusplus
 }
