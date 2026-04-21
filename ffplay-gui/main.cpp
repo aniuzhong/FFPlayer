@@ -520,10 +520,9 @@ private:
     void event_loop()
     {
         SDL_Event event;
-        double incr, frac;
+        double incr;
 
         for (;;) {
-            double x;
             refresh_loop_wait_event(&event);
             ImGui_ImplSDL2_ProcessEvent(&event);
             switch (event.type) {
@@ -630,49 +629,18 @@ do_seek:
                         last_mouse_left_click = av_gettime_relative();
                     }
                 }
+                if (cursor_hidden_) {
+                    SDL_ShowCursor(1);
+                    cursor_hidden_ = 0;
+                }
+                cursor_last_shown_ = av_gettime_relative();
+                break;
             case SDL_MOUSEMOTION:
                 if (cursor_hidden_) {
                     SDL_ShowCursor(1);
                     cursor_hidden_ = 0;
                 }
                 cursor_last_shown_ = av_gettime_relative();
-                if (event.type == SDL_MOUSEBUTTONDOWN) {
-                    if (event.button.button != SDL_BUTTON_RIGHT)
-                        break;
-                    if (!stream_)
-                        break;
-                    x = event.button.x;
-                } else {
-                    if (!(event.motion.state & SDL_BUTTON_RMASK))
-                        break;
-                    if (!stream_)
-                        break;
-                    x = event.motion.x;
-                }
-                if (demuxer_get_seek_mode(stream_->demuxer) || stream_->ic->duration <= 0) {
-                    uint64_t size = avio_size(stream_->ic->pb);
-                    stream_seek(stream_, size * x / stream_->width, 0, 1);
-                } else {
-                    int64_t ts;
-                    int ns, hh, mm, ss;
-                    int tns, thh, tmm, tss;
-                    tns  = stream_->ic->duration / 1000000LL;
-                    thh  = tns / 3600;
-                    tmm  = (tns % 3600) / 60;
-                    tss  = (tns % 60);
-                    frac = x / stream_->width;
-                    ns   = frac * tns;
-                    hh   = ns / 3600;
-                    mm   = (ns % 3600) / 60;
-                    ss   = (ns % 60);
-                    av_log(NULL, AV_LOG_INFO,
-                           "Seek to %2.0f%% (%2d:%02d:%02d) of total duration (%2d:%02d:%02d)       \n", frac * 100,
-                           hh, mm, ss, thh, tmm, tss);
-                    ts = frac * stream_->ic->duration;
-                    if (stream_->ic->start_time != AV_NOPTS_VALUE)
-                        ts += stream_->ic->start_time;
-                    stream_seek(stream_, ts, 0, 0);
-                }
                 break;
             case SDL_WINDOWEVENT:
                 switch (event.window.event) {
