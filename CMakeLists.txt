@@ -159,6 +159,7 @@ add_executable(${_ffplay_gui_target} WIN32
   ffplay-gui/video_renderer.c
   ffplay-gui/subtitle_thread.c
   ffplay-gui/demuxer.c
+  ffplay-gui/read_thread.c
   ffplay-gui/clock.c
   ffplay-gui/av_sync.c
   ffplay-gui/filter.c

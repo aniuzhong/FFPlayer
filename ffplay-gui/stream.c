@@ -6,6 +6,7 @@
 #include "clock.h"
 #include "av_sync.h"
 #include "demuxer.h"
+#include "read_thread.h"
 #include "filter.h"
 #include "video_renderer.h"
 #include "audio_thread.h"

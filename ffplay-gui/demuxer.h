@@ -23,8 +23,6 @@ int demuxer_is_aborted(const Demuxer *demuxer);
 int demuxer_get_seek_mode(const Demuxer *demuxer);
 const char *demuxer_get_input_name(const Demuxer *demuxer);
 
-int read_thread(void *arg);
-
 #ifdef __cplusplus
 }
 #endif
