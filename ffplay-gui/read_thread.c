@@ -21,73 +21,19 @@ static int decode_interrupt_cb(void *ctx)
     return demuxer_is_aborted(demuxer);
 }
 
-/* this thread gets the stream from the disk or the network */
-int read_thread(void *arg)
+/* find and open the best streams (audio, video, subtitle) */
+static int find_stream_components(VideoState *is)
 {
-    VideoState *is = (VideoState *)arg;
-    Demuxer *demuxer = &is->demuxer;
-    AVFormatContext *ic = NULL;
-    int err, i, ret;
+    AVFormatContext *ic = is->demuxer.ic;
     int st_index[AVMEDIA_TYPE_NB];
-    AVPacket *pkt = NULL;
-    SDL_mutex *wait_mutex = SDL_CreateMutex();
-    AVDictionary *open_opts = NULL;
+    int i, ret = -1;
 
-    if (!wait_mutex) {
-        av_log(NULL, AV_LOG_FATAL, "SDL_CreateMutex(): %s\n", SDL_GetError());
-        ret = AVERROR(ENOMEM);
-        goto fail;
+    if (!ic) {
+        av_log(NULL, AV_LOG_ERROR, "AVFormatContext not initialized\n");
+        return -1;
     }
 
     memset(st_index, -1, sizeof(st_index));
-    is->eof = 0;
-
-    pkt = av_packet_alloc();
-    if (!pkt) {
-        av_log(NULL, AV_LOG_FATAL, "Could not allocate packet.\n");
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-    ic = avformat_alloc_context();
-    if (!ic) {
-        av_log(NULL, AV_LOG_FATAL, "Could not allocate context.\n");
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-    ic->interrupt_callback.callback = decode_interrupt_cb;
-    ic->interrupt_callback.opaque = demuxer;
-    if (!av_dict_get(open_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
-        av_dict_set(&open_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
-    err = avformat_open_input(&ic, demuxer->input_url, NULL, &open_opts);
-    av_dict_free(&open_opts);
-    open_opts = NULL;
-    if (err < 0) {
-        print_error(demuxer->input_url, err);
-        ret = -1;
-        goto fail;
-    }
-    demuxer->ic = ic;
-
-    err = avformat_find_stream_info(ic, NULL);
-
-    if (err < 0) {
-        av_log(NULL, AV_LOG_WARNING,
-               "%s: could not find codec parameters\n", demuxer->input_url);
-        ret = -1;
-        goto fail;
-    }
-
-    if (ic->pb)
-        ic->pb->eof_reached = 0;
-
-    if (demuxer->seek_mode < 0)
-        demuxer->seek_mode = !(ic->iformat->flags & AVFMT_NO_BYTE_SEEK) &&
-                             !!(ic->iformat->flags & AVFMT_TS_DISCONT) &&
-                             strcmp("ogg", ic->iformat->name);
-
-    is->max_frame_duration = (ic->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0;
-
-    is->realtime = is_realtime(ic);
 
     for (i = 0; i < ic->nb_streams; i++) {
         AVStream *st = ic->streams[i];
@@ -137,7 +83,81 @@ int read_thread(void *arg)
 
     if (is->video_stream < 0 && is->audio_stream < 0) {
         av_log(NULL, AV_LOG_FATAL, "Failed to open file '%s' or configure filtergraph\n",
-               demuxer->input_url);
+               is->demuxer.input_url);
+        return -1;
+    }
+
+    return 0;
+}
+
+/* this thread gets the stream from the disk or the network */
+int read_thread(void *arg)
+{
+    VideoState *is = (VideoState *)arg;
+    Demuxer *demuxer = &is->demuxer;
+    AVFormatContext *ic = NULL;
+    int err, ret;
+    AVPacket *pkt = NULL;
+    SDL_mutex *wait_mutex = SDL_CreateMutex();
+    AVDictionary *open_opts = NULL;
+
+    if (!wait_mutex) {
+        av_log(NULL, AV_LOG_FATAL, "SDL_CreateMutex(): %s\n", SDL_GetError());
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+
+    is->eof = 0;
+
+    pkt = av_packet_alloc();
+    if (!pkt) {
+        av_log(NULL, AV_LOG_FATAL, "Could not allocate packet.\n");
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+    ic = avformat_alloc_context();
+    if (!ic) {
+        av_log(NULL, AV_LOG_FATAL, "Could not allocate context.\n");
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+    ic->interrupt_callback.callback = decode_interrupt_cb;
+    ic->interrupt_callback.opaque = demuxer;
+    if (!av_dict_get(open_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
+        av_dict_set(&open_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
+    err = avformat_open_input(&ic, demuxer->input_url, NULL, &open_opts);
+    av_dict_free(&open_opts);
+    open_opts = NULL;
+    if (err < 0) {
+        print_error(demuxer->input_url, err);
+        ret = -1;
+        goto fail;
+    }
+    demuxer->ic = ic;
+
+    err = avformat_find_stream_info(ic, NULL);
+
+    if (err < 0) {
+        av_log(NULL, AV_LOG_WARNING,
+               "%s: could not find codec parameters\n", demuxer->input_url);
+        ret = -1;
+        goto fail;
+    }
+
+    if (ic->pb)
+        ic->pb->eof_reached = 0;
+
+    if (demuxer->seek_mode < 0)
+        demuxer->seek_mode = !(ic->iformat->flags & AVFMT_NO_BYTE_SEEK) &&
+                             !!(ic->iformat->flags & AVFMT_TS_DISCONT) &&
+                             strcmp("ogg", ic->iformat->name);
+
+    is->max_frame_duration = (ic->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0;
+
+    is->realtime = is_realtime(ic);
+
+    /* find and open the best streams */
+    if (find_stream_components(is) < 0) {
         ret = -1;
         goto fail;
     }
