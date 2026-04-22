@@ -17,11 +17,12 @@
 #include <libavutil/rational.h>
 #include <libavcodec/avcodec.h>
 
-#include "packet_queue.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct PacketQueue PacketQueue;
+typedef struct FrameQueue FrameQueue;
 
 typedef struct Frame {
     AVFrame     *frame;

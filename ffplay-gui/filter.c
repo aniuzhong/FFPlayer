@@ -1,13 +1,13 @@
-#include "filter.h"
-
 #include <math.h>
 #include <stdio.h>
 
-#include "libavutil/bprint.h"
-#include "libavutil/display.h"
-#include "libavutil/mem.h"
-#include "libavutil/opt.h"
-#include "libavfilter/buffersrc.h"
+#include <libavutil/bprint.h>
+#include <libavutil/display.h>
+#include <libavutil/mem.h>
+#include <libavutil/opt.h>
+#include <libavfilter/buffersrc.h>
+
+#include "filter.h"
 
 static const struct TextureFormatEntry {
     enum AVPixelFormat format;

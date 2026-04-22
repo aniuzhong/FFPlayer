@@ -1,11 +1,13 @@
-#include "decoder.h"
-
 #include <string.h>
 
-#include "libavutil/error.h"
-#include "libavutil/log.h"
-#include "libavutil/mathematics.h"
-#include "libavutil/mem.h"
+
+#include <libavutil/error.h>
+#include <libavutil/log.h>
+#include <libavutil/mathematics.h>
+#include <libavutil/mem.h>
+
+#include "packet_queue.h"
+#include "decoder.h"
 
 int decoder_init(Decoder *d, AVCodecContext *avctx, PacketQueue *queue, SDL_cond *empty_queue_cond)
 {

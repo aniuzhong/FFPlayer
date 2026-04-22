@@ -1,6 +1,7 @@
-#include "subtitle_thread.h"
+#include <libavutil/avutil.h>
 
-#include "libavutil/avutil.h"
+#include "subtitle_thread.h"
+#include "video_state.h"
 
 int subtitle_thread(void *arg)
 {

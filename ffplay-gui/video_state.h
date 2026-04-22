@@ -4,13 +4,11 @@
 #include <SDL.h>
 #include <SDL_thread.h>
 
-#include "libavutil/channel_layout.h"
-#include "libavutil/samplefmt.h"
-#include "libavutil/tx.h"
-#include "libswresample/swresample.h"
-#include "libswscale/swscale.h"
-#include "libavformat/avformat.h"
-#include "libavfilter/avfilter.h"
+#include <libavutil/tx.h>
+#include <libswresample/swresample.h>
+#include <libswscale/swscale.h>
+#include <libavformat/avformat.h>
+#include <libavfilter/avfilter.h>
 
 #include "audio_device.h"
 #include "decoder.h"

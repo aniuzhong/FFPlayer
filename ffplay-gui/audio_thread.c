@@ -1,14 +1,13 @@
-#include "audio_thread.h"
-
 #include <math.h>
 
-#include "clock.h"
+#include <libavfilter/buffersink.h>
+#include <libavfilter/buffersrc.h>
+#include <libavutil/error.h>
+#include <libavutil/log.h>
+#include <libavutil/samplefmt.h>
+
 #include "filter.h"
-#include "libavfilter/buffersink.h"
-#include "libavfilter/buffersrc.h"
-#include "libavutil/error.h"
-#include "libavutil/log.h"
-#include "libavutil/samplefmt.h"
+#include "audio_thread.h"
 
 static int cmp_audio_fmts(enum AVSampleFormat fmt1, int64_t channel_count1,
                           enum AVSampleFormat fmt2, int64_t channel_count2)

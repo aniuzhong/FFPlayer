@@ -1,5 +1,3 @@
-#include "application.h"
-
 #include <math.h>
 #include <limits.h>
 #include <signal.h>
@@ -11,12 +9,12 @@
 #include <vector>
 
 extern "C" {
-#include "libavutil/common.h"
-#include "libavutil/log.h"
-#include "libavutil/mathematics.h"
-#include "libavutil/time.h"
-#include "libavformat/avformat.h"
-#include "libavdevice/avdevice.h"
+#include <libavutil/common.h>
+#include <libavutil/log.h>
+#include <libavutil/mathematics.h>
+#include <libavutil/time.h>
+#include <libavformat/avformat.h>
+#include <libavdevice/avdevice.h>
 }
 
 #include "imgui.h"
@@ -37,6 +35,7 @@ extern "C" {
 #include "demuxer.h"
 #include "filter.h"
 #include "stream.h"
+#include "application.h"
 
 const char program_name[] = "ffplay";
 const int program_birth_year = 2003;

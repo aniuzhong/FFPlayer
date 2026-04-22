@@ -1,16 +1,16 @@
-#include "video_renderer.h"
-
 #include <limits.h>
 #include <math.h>
 #include <string.h>
 
+#include <libavutil/common.h>
+#include <libavutil/mathematics.h>
+#include <libavutil/pixdesc.h>
+#include <libavutil/time.h>
+
 #include "av_sync.h"
 #include "clock.h"
 #include "stream.h"
-#include "libavutil/common.h"
-#include "libavutil/mathematics.h"
-#include "libavutil/pixdesc.h"
-#include "libavutil/time.h"
+#include "video_renderer.h"
 
 static const struct TextureFormatEntry {
     enum AVPixelFormat format;

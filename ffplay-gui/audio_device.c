@@ -1,10 +1,10 @@
-#include "audio_device.h"
-
 #include <stdlib.h>
 
-#include "libavutil/common.h"
-#include "libavutil/log.h"
-#include "libavutil/samplefmt.h"
+#include <libavutil/common.h>
+#include <libavutil/log.h>
+#include <libavutil/samplefmt.h>
+
+#include "audio_device.h"
 
 void audio_device_reset(AudioDevice *device)
 {

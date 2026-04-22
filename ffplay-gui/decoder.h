@@ -3,8 +3,11 @@
 
 #include "frame_queue.h"
 
-#include "libavutil/rational.h"
-#include "libavcodec/avcodec.h"
+#include <SDL.h>
+#include <SDL_thread.h>
+
+#include <libavutil/rational.h>
+#include <libavcodec/avcodec.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,18 +18,18 @@ typedef struct FrameData {
 } FrameData;
 
 typedef struct Decoder {
-    AVPacket *pkt;
-    PacketQueue *queue;
+    AVPacket       *pkt;
+    PacketQueue    *queue;
     AVCodecContext *avctx;
-    int pkt_serial;
-    int finished;
-    int packet_pending;
-    SDL_cond *empty_queue_cond;
-    int64_t start_pts;
-    AVRational start_pts_tb;
-    int64_t next_pts;
-    AVRational next_pts_tb;
-    SDL_Thread *decoder_tid;
+    int             pkt_serial;
+    int             finished;
+    int             packet_pending;
+    SDL_cond       *empty_queue_cond;
+    int64_t         start_pts;
+    AVRational      start_pts_tb;
+    int64_t         next_pts;
+    AVRational      next_pts_tb;
+    SDL_Thread     *decoder_tid;
 } Decoder;
 
 int decoder_init(Decoder *d, AVCodecContext *avctx, PacketQueue *queue, SDL_cond *empty_queue_cond);

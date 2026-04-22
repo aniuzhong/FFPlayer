@@ -1,16 +1,17 @@
-#include "audio_pipeline.h"
-
 #include <math.h>
 #include <string.h>
 
+#include <libavutil/common.h>
+#include <libavutil/error.h>
+#include <libavutil/log.h>
+#include <libavutil/mem.h>
+#include <libavutil/time.h>
+
+#include "audio_pipeline.h"
 #include "audio_device.h"
 #include "av_sync.h"
-#include "clock.h"
-#include "libavutil/common.h"
-#include "libavutil/error.h"
-#include "libavutil/log.h"
-#include "libavutil/mem.h"
-#include "libavutil/time.h"
+#include "video_state.h"
+#include "packet_queue.h"
 
 /* copy samples for viewing in editor window */
 static void update_sample_display(VideoState *is, short *samples, int samples_size)

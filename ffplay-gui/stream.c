@@ -1,8 +1,11 @@
-#include "stream.h"
-
 #include <math.h>
 #include <string.h>
 
+#include <libavutil/error.h>
+#include <libavutil/time.h>
+#include <libavfilter/buffersink.h>
+
+#include "packet_queue.h"
 #include "clock.h"
 #include "av_sync.h"
 #include "demuxer.h"
@@ -12,8 +15,7 @@
 #include "audio_thread.h"
 #include "video_thread.h"
 #include "subtitle_thread.h"
-#include "libavutil/error.h"
-#include "libavutil/time.h"
+#include "stream.h"
 
 #define VIDEO_PICTURE_QUEUE_SIZE 3
 #define SUBPICTURE_QUEUE_SIZE 16

@@ -1,10 +1,14 @@
 #include <string.h>
 
+#include <SDL.h>
+#include <SDL_thread.h>
+
 #include <libavutil/common.h>
 #include <libavutil/error.h>
 #include <libavutil/log.h>
 #include <libavutil/mem.h>
 
+#include "packet_queue.h"
 #include "frame_queue.h"
 
 #define VIDEO_PICTURE_QUEUE_SIZE 3

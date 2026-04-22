@@ -1,12 +1,12 @@
-#include "read_thread.h"
-
 #include <string.h>
+
+#include <libavutil/error.h>
+#include <libavutil/log.h>
 
 #include "demuxer.h"
 #include "stream.h"
-#include "clock.h"
-#include "libavutil/error.h"
-#include "libavutil/log.h"
+#include "packet_queue.h"
+#include "read_thread.h"
 
 static void print_error(const char *filename, int err)
 {

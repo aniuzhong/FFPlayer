@@ -4,6 +4,8 @@ project(FFPlayer C CXX)
 set(CMAKE_C_STANDARD 99)
 include(FetchContent)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(THIRD_PARTY_DIR "${CMAKE_SOURCE_DIR}/third_party" CACHE PATH "Root directory for bundled third-party packages")
 set(FFPLAY_FETCHCONTENT_DIR "${THIRD_PARTY_DIR}/_fetchcontent" CACHE PATH
   "Directory used by FetchContent to download/extract source dependencies")

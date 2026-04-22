@@ -1,7 +1,7 @@
 #ifndef FFPLAY_GUI_DEMUXER_H
 #define FFPLAY_GUI_DEMUXER_H
 
-#include "libavformat/avformat.h"
+#include <libavformat/avformat.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -9,12 +9,12 @@ extern "C" {
 
 typedef struct Demuxer {
     AVFormatContext *ic;
-    int seek_mode;
-    int abort_request;
-    int realtime;
-    int eof;
-    double max_frame_duration;
-    char *input_url;
+    int              seek_mode;
+    int              abort_request;
+    int              realtime;
+    int              eof;
+    double           max_frame_duration;
+    char            *input_url;
 } Demuxer;
 
 int demuxer_init(Demuxer *demuxer, const char *input_url);

@@ -18,15 +18,13 @@
 #ifndef FFPLAY_GUI_PACKET_QUEUE_H
 #define FFPLAY_GUI_PACKET_QUEUE_H
 
-#include <SDL.h>
-#include <SDL_thread.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct AVPacket AVPacket;
+#include <stdint.h>
 
+typedef struct AVPacket AVPacket;
 typedef struct PacketQueue PacketQueue;
 
 /**
