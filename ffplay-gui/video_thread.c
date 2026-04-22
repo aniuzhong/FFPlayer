@@ -53,7 +53,7 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
         if (frame->pts != AV_NOPTS_VALUE)
             dpts = av_q2d(is->video_st->time_base) * frame->pts;
 
-        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(is->ic, is->video_st, frame);
+        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(is->demuxer.ic, is->video_st, frame);
 
         if (frame->pts != AV_NOPTS_VALUE &&
             av_sync_should_early_drop(&is->av_sync,
@@ -80,7 +80,7 @@ int video_thread(void *arg)
     double duration;
     int ret;
     AVRational tb = is->video_st->time_base;
-    AVRational frame_rate = av_guess_frame_rate(is->ic, is->video_st, NULL);
+    AVRational frame_rate = av_guess_frame_rate(is->demuxer.ic, is->video_st, NULL);
 
     AVFilterGraph *graph = NULL;
     AVFilterContext *filt_out = NULL, *filt_in = NULL;

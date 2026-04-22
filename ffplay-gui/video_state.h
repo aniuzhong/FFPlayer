@@ -16,6 +16,7 @@
 #include "decoder.h"
 #include "clock.h"
 #include "av_sync.h"
+#include "demuxer.h"
 
 #define VIDEO_BACKGROUND_TILE_SIZE 64
 
@@ -54,7 +55,6 @@ enum ShowMode {
     SHOW_MODE_NONE = -1, SHOW_MODE_VIDEO = 0, SHOW_MODE_WAVES, SHOW_MODE_RDFT, SHOW_MODE_NB
 };
 
-typedef struct Demuxer Demuxer;
 typedef struct AudioDevice AudioDevice;
 typedef struct VideoRenderer VideoRenderer;
 
@@ -70,7 +70,6 @@ typedef struct VideoState {
     int64_t seek_pos;
     int64_t seek_rel;
     int read_pause_return;
-    AVFormatContext *ic;
     int realtime;
 
     Clock *audclk;
@@ -152,10 +151,11 @@ typedef struct VideoState {
     AVFilterContext *in_audio_filter;
     AVFilterContext *out_audio_filter;
     AVFilterGraph *agraph;
-    Demuxer *demuxer;
+    Demuxer demuxer;
     AudioDevice *audio_device;
     VideoRenderer *video_renderer;
     void (*on_frame_size_changed)(struct VideoState *is, int width, int height, AVRational sar);
+    void (*on_step_frame)(struct VideoState *is);
 
     int last_video_stream, last_audio_stream, last_subtitle_stream;
 

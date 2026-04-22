@@ -102,7 +102,7 @@ int configure_video_filters(AVFilterGraph *graph, VideoState *is, const char *vf
     int ret;
     AVFilterContext *filt_src = NULL, *filt_out = NULL, *last_filter = NULL;
     AVCodecParameters *codecpar = is->video_st->codecpar;
-    AVRational fr = av_guess_frame_rate(is->ic, is->video_st, NULL);
+    AVRational fr = av_guess_frame_rate(is->demuxer.ic, is->video_st, NULL);
     int nb_pix_fmts = 0;
     int i, j;
     AVBufferSrcParameters *par = av_buffersrc_parameters_alloc();

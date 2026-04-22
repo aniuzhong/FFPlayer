@@ -17,62 +17,30 @@ static void print_error(const char *filename, int err)
 
 static int decode_interrupt_cb(void *ctx)
 {
-    Demuxer *demuxer = (Demuxer *)ctx;
-    return demuxer->is->abort_request;
+    VideoState *is = (VideoState *)ctx;
+    return is->abort_request;
 }
 
-Demuxer *demuxer_create(
-    VideoState *is,
-    const char *input_filename,
-    void (*step_to_next_frame_cb)(VideoState *is))
+int demuxer_get_seek_mode(const VideoState *is)
 {
-    Demuxer *demuxer = (Demuxer *)av_mallocz(sizeof(Demuxer));
-    if (!demuxer)
-        return NULL;
-    demuxer->is = is;
-    demuxer->seek_mode = -1;
-    demuxer->input_filename = input_filename;
-    demuxer->step_to_next_frame_cb = step_to_next_frame_cb;
-    return demuxer;
-}
-
-void demuxer_destroy(Demuxer **demuxer)
-{
-    if (demuxer && *demuxer) {
-        av_free(*demuxer);
-        *demuxer = NULL;
-    }
-}
-
-int demuxer_get_seek_mode(const Demuxer *demuxer)
-{
-    if (!demuxer)
+    if (!is)
         return 0;
-    if (demuxer->seek_mode < 0)
+    if (is->demuxer.seek_mode < 0)
         return 0;
-    return demuxer->seek_mode;
+    return is->demuxer.seek_mode;
 }
 
-const char *demuxer_get_input_name(const Demuxer *demuxer)
+const char *demuxer_get_input_name(const VideoState *is)
 {
-    if (!demuxer)
+    if (!is || !is->filename)
         return "";
-    /*
-     * input_filename may point to caller-owned storage.
-     * VideoState::filename is av_strdup() owned by stream lifecycle and stable.
-     */
-    if (demuxer->is && demuxer->is->filename)
-        return demuxer->is->filename;
-    if (demuxer->input_filename)
-        return demuxer->input_filename;
-    return "";
+    return is->filename;
 }
 
 /* this thread gets the stream from the disk or the network */
 int read_thread(void *arg)
 {
-    Demuxer *demuxer = (Demuxer *)arg;
-    VideoState *is = demuxer->is;
+    VideoState *is = (VideoState *)arg;
     AVFormatContext *ic = NULL;
     int err, i, ret;
     int st_index[AVMEDIA_TYPE_NB];
@@ -102,7 +70,7 @@ int read_thread(void *arg)
         goto fail;
     }
     ic->interrupt_callback.callback = decode_interrupt_cb;
-    ic->interrupt_callback.opaque = demuxer;
+    ic->interrupt_callback.opaque = is;
     if (!av_dict_get(open_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
         av_dict_set(&open_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
     err = avformat_open_input(&ic, is->filename, NULL, &open_opts);
@@ -113,7 +81,7 @@ int read_thread(void *arg)
         ret = -1;
         goto fail;
     }
-    is->ic = ic;
+    is->demuxer.ic = ic;
 
     err = avformat_find_stream_info(ic, NULL);
 
@@ -127,8 +95,8 @@ int read_thread(void *arg)
     if (ic->pb)
         ic->pb->eof_reached = 0;
 
-    if (demuxer->seek_mode < 0)
-        demuxer->seek_mode = !(ic->iformat->flags & AVFMT_NO_BYTE_SEEK) &&
+    if (is->demuxer.seek_mode < 0)
+        is->demuxer.seek_mode = !(ic->iformat->flags & AVFMT_NO_BYTE_SEEK) &&
                              !!(ic->iformat->flags & AVFMT_TS_DISCONT) &&
                              strcmp("ogg", ic->iformat->name);
 
@@ -202,7 +170,7 @@ int read_thread(void *arg)
 #if CONFIG_RTSP_DEMUXER || CONFIG_MMSH_PROTOCOL
         if (is->paused &&
                 (!strcmp(ic->iformat->name, "rtsp") ||
-                 (ic->pb && !strncmp(demuxer->input_filename, "mmsh:", 5)))) {
+                 (ic->pb && is->filename && !strncmp(is->filename, "mmsh:", 5)))) {
             SDL_Delay(10);
             continue;
         }
@@ -212,10 +180,10 @@ int read_thread(void *arg)
             int64_t seek_min    = is->seek_rel > 0 ? seek_target - is->seek_rel + 2: INT64_MIN;
             int64_t seek_max    = is->seek_rel < 0 ? seek_target - is->seek_rel - 2: INT64_MAX;
 
-            ret = avformat_seek_file(is->ic, -1, seek_min, seek_target, seek_max, is->seek_flags);
+            ret = avformat_seek_file(is->demuxer.ic, -1, seek_min, seek_target, seek_max, is->seek_flags);
             if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR,
-                       "%s: error while seeking\n", is->ic->url);
+                       "%s: error while seeking\n", is->demuxer.ic->url);
             } else {
                 if (is->audio_stream >= 0)
                     packet_queue_flush(is->audioq);
@@ -228,8 +196,8 @@ int read_thread(void *arg)
             is->seek_req = 0;
             is->queue_attachments_req = 1;
             is->eof = 0;
-            if (is->paused && demuxer->step_to_next_frame_cb)
-                demuxer->step_to_next_frame_cb(is);
+            if (is->paused && is->on_step_frame)
+                is->on_step_frame(is);
         }
         if (is->queue_attachments_req) {
             if (is->video_st && is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC) {
@@ -290,7 +258,7 @@ int read_thread(void *arg)
 
     ret = 0;
 fail:
-    if (ic && !is->ic)
+    if (ic && !is->demuxer.ic)
         avformat_close_input(&ic);
 
     av_packet_free(&pkt);
