@@ -1,5 +1,6 @@
 #include "demuxer.h"
 
+#include <errno.h>
 #include <string.h>
 
 #include "stream.h"
@@ -17,30 +18,65 @@ static void print_error(const char *filename, int err)
 
 static int decode_interrupt_cb(void *ctx)
 {
-    VideoState *is = (VideoState *)ctx;
-    return is->abort_request;
+    Demuxer *demuxer = (Demuxer *)ctx;
+    return demuxer_is_aborted(demuxer);
 }
 
-int demuxer_get_seek_mode(const VideoState *is)
+int demuxer_init(Demuxer *demuxer, const char *input_url)
 {
-    if (!is)
-        return 0;
-    if (is->demuxer.seek_mode < 0)
-        return 0;
-    return is->demuxer.seek_mode;
+    if (!demuxer || !input_url)
+        return AVERROR(EINVAL);
+    memset(demuxer, 0, sizeof(*demuxer));
+    demuxer->seek_mode = -1;
+    demuxer->input_url = av_strdup(input_url);
+    if (!demuxer->input_url)
+        return AVERROR(ENOMEM);
+    return 0;
 }
 
-const char *demuxer_get_input_name(const VideoState *is)
+void demuxer_destroy(Demuxer *demuxer)
 {
-    if (!is || !is->filename)
+    if (!demuxer)
+        return;
+    avformat_close_input(&demuxer->ic);
+    av_freep(&demuxer->input_url);
+    demuxer->seek_mode = -1;
+    demuxer->abort_request = 0;
+}
+
+void demuxer_request_abort(Demuxer *demuxer)
+{
+    if (!demuxer)
+        return;
+    demuxer->abort_request = 1;
+}
+
+int demuxer_is_aborted(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0;
+    return demuxer->abort_request;
+}
+
+int demuxer_get_seek_mode(const Demuxer *demuxer)
+{
+    if (!demuxer || demuxer->seek_mode < 0)
+        return 0;
+    return demuxer->seek_mode;
+}
+
+const char *demuxer_get_input_name(const Demuxer *demuxer)
+{
+    if (!demuxer || !demuxer->input_url)
         return "";
-    return is->filename;
+    return demuxer->input_url;
 }
 
 /* this thread gets the stream from the disk or the network */
 int read_thread(void *arg)
 {
     VideoState *is = (VideoState *)arg;
+    Demuxer *demuxer = &is->demuxer;
     AVFormatContext *ic = NULL;
     int err, i, ret;
     int st_index[AVMEDIA_TYPE_NB];
@@ -70,24 +106,24 @@ int read_thread(void *arg)
         goto fail;
     }
     ic->interrupt_callback.callback = decode_interrupt_cb;
-    ic->interrupt_callback.opaque = is;
+    ic->interrupt_callback.opaque = demuxer;
     if (!av_dict_get(open_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
         av_dict_set(&open_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
-    err = avformat_open_input(&ic, is->filename, NULL, &open_opts);
+    err = avformat_open_input(&ic, demuxer->input_url, NULL, &open_opts);
     av_dict_free(&open_opts);
     open_opts = NULL;
     if (err < 0) {
-        print_error(is->filename, err);
+        print_error(demuxer->input_url, err);
         ret = -1;
         goto fail;
     }
-    is->demuxer.ic = ic;
+    demuxer->ic = ic;
 
     err = avformat_find_stream_info(ic, NULL);
 
     if (err < 0) {
         av_log(NULL, AV_LOG_WARNING,
-               "%s: could not find codec parameters\n", is->filename);
+               "%s: could not find codec parameters\n", demuxer->input_url);
         ret = -1;
         goto fail;
     }
@@ -95,8 +131,8 @@ int read_thread(void *arg)
     if (ic->pb)
         ic->pb->eof_reached = 0;
 
-    if (is->demuxer.seek_mode < 0)
-        is->demuxer.seek_mode = !(ic->iformat->flags & AVFMT_NO_BYTE_SEEK) &&
+    if (demuxer->seek_mode < 0)
+        demuxer->seek_mode = !(ic->iformat->flags & AVFMT_NO_BYTE_SEEK) &&
                              !!(ic->iformat->flags & AVFMT_TS_DISCONT) &&
                              strcmp("ogg", ic->iformat->name);
 
@@ -152,13 +188,13 @@ int read_thread(void *arg)
 
     if (is->video_stream < 0 && is->audio_stream < 0) {
         av_log(NULL, AV_LOG_FATAL, "Failed to open file '%s' or configure filtergraph\n",
-               is->filename);
+               demuxer->input_url);
         ret = -1;
         goto fail;
     }
 
     for (;;) {
-        if (is->abort_request)
+        if (demuxer_is_aborted(demuxer))
             break;
         if (is->paused != is->last_paused) {
             is->last_paused = is->paused;
@@ -170,7 +206,7 @@ int read_thread(void *arg)
 #if CONFIG_RTSP_DEMUXER || CONFIG_MMSH_PROTOCOL
         if (is->paused &&
                 (!strcmp(ic->iformat->name, "rtsp") ||
-                 (ic->pb && is->filename && !strncmp(is->filename, "mmsh:", 5)))) {
+                 (ic->pb && demuxer->input_url && !strncmp(demuxer->input_url, "mmsh:", 5)))) {
             SDL_Delay(10);
             continue;
         }
@@ -180,10 +216,10 @@ int read_thread(void *arg)
             int64_t seek_min    = is->seek_rel > 0 ? seek_target - is->seek_rel + 2: INT64_MIN;
             int64_t seek_max    = is->seek_rel < 0 ? seek_target - is->seek_rel - 2: INT64_MAX;
 
-            ret = avformat_seek_file(is->demuxer.ic, -1, seek_min, seek_target, seek_max, is->seek_flags);
+            ret = avformat_seek_file(demuxer->ic, -1, seek_min, seek_target, seek_max, is->seek_flags);
             if (ret < 0) {
                 av_log(NULL, AV_LOG_ERROR,
-                       "%s: error while seeking\n", is->demuxer.ic->url);
+                       "%s: error while seeking\n", demuxer->ic->url);
             } else {
                 if (is->audio_stream >= 0)
                     packet_queue_flush(is->audioq);
@@ -258,7 +294,7 @@ int read_thread(void *arg)
 
     ret = 0;
 fail:
-    if (ic && !is->demuxer.ic)
+    if (ic && !demuxer->ic)
         avformat_close_input(&ic);
 
     av_packet_free(&pkt);

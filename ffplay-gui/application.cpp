@@ -146,7 +146,7 @@ static void sigterm_handler(int sig)
 
 static const char *video_window_title(VideoState *is, const char *fallback)
 {
-    const char *title = demuxer_get_input_name(is);
+    const char *title = demuxer_get_input_name(&is->demuxer);
     return (title && title[0]) ? title : fallback;
 }
 
@@ -241,7 +241,7 @@ void Application::SeekToRatio(float ratio)
     if (!stream_ || !stream_->demuxer.ic)
         return;
     ratio = av_clipf(ratio, 0.0f, 1.0f);
-    if (demuxer_get_seek_mode(stream_) || stream_->demuxer.ic->duration <= 0) {
+    if (demuxer_get_seek_mode(&stream_->demuxer) || stream_->demuxer.ic->duration <= 0) {
         if (!stream_->demuxer.ic->pb)
             return;
         size = avio_size(stream_->demuxer.ic->pb);

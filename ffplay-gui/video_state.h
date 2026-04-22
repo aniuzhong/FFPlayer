@@ -60,7 +60,6 @@ typedef struct VideoRenderer VideoRenderer;
 
 typedef struct VideoState {
     SDL_Thread *read_tid;
-    int abort_request;
     int force_refresh;
     int paused;
     int last_paused;
@@ -142,7 +141,6 @@ typedef struct VideoState {
     struct SwsContext *sub_convert_ctx;
     int eof;
 
-    char *filename;
     int width, height, xleft, ytop;
     int step;
 

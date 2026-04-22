@@ -167,7 +167,7 @@ void stream_seek_relative(VideoState *is, double incr_seconds)
     if (!is || !is->demuxer.ic)
         return;
 
-    if (demuxer_get_seek_mode(is)) {
+    if (demuxer_get_seek_mode(&is->demuxer)) {
         pos = -1;
         if (pos < 0 && is->video_stream >= 0)
             pos = frame_queue_last_pos(is->pictq);
@@ -219,8 +219,7 @@ VideoState *stream_open(const char *filename,
     is->last_video_stream = is->video_stream = -1;
     is->last_audio_stream = is->audio_stream = -1;
     is->last_subtitle_stream = is->subtitle_stream = -1;
-    is->filename = av_strdup(filename);
-    if (!is->filename)
+    if (demuxer_init(&is->demuxer, filename) < 0)
         goto fail;
     is->ytop    = 0;
     is->xleft   = 0;
@@ -495,7 +494,7 @@ void stream_close(VideoState *is)
 {
     if (!is)
         return;
-    is->abort_request = 1;
+    demuxer_request_abort(&is->demuxer);
     if (is->read_tid) {
         SDL_WaitThread(is->read_tid, NULL);
         is->read_tid = NULL;
@@ -507,7 +506,7 @@ void stream_close(VideoState *is)
     if (is->subtitle_stream >= 0)
         stream_component_close(is, is->subtitle_stream);
 
-    avformat_close_input(&is->demuxer.ic);
+    demuxer_destroy(&is->demuxer);
     if (packet_queue_is_initialized(is->videoq))
         packet_queue_free(&is->videoq);
     if (packet_queue_is_initialized(is->audioq))
@@ -523,7 +522,6 @@ void stream_close(VideoState *is)
     if (is->continue_read_thread)
         SDL_DestroyCond(is->continue_read_thread);
     sws_freeContext(is->sub_convert_ctx);
-    av_free(is->filename);
     if (is->vis_texture)
         SDL_DestroyTexture(is->vis_texture);
     if (is->vid_texture)
