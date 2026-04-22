@@ -263,7 +263,7 @@ VideoState *stream_open(const char *filename,
                  &is->audio_st,
                  &is->audio_stream,
                  &is->video_stream,
-                 &is->max_frame_duration);
+                 &is->demuxer.max_frame_duration);
     is->audio_clock_serial = -1;
     is->audio_volume = SDL_MIX_MAXVOLUME;
     is->muted = 0;
@@ -351,7 +351,7 @@ int stream_component_open(VideoState *is, int stream_index)
     if ((ret = avcodec_open2(avctx, codec, &opts)) < 0) {
         goto fail;
     }
-    is->eof = 0;
+    demuxer_set_eof(&is->demuxer, 0);
     ic->streams[stream_index]->discard = AVDISCARD_DEFAULT;
     switch (avctx->codec_type) {
     case AVMEDIA_TYPE_AUDIO:

@@ -296,7 +296,7 @@ void Application::RenderImGui()
              * decodable payload duration. At EOF, snap near-tail progress to 100%
              * so the thumb reaches the right edge instead of stopping around 4.x/5s.
              */
-            if (stream_->eof && progress > 0.90f)
+            if (demuxer_is_eof(&stream_->demuxer) && progress > 0.90f)
                 progress = 1.0f;
 
             if (!isfinite(progress))

@@ -12,6 +12,9 @@ int demuxer_init(Demuxer *demuxer, const char *input_url)
         return AVERROR(EINVAL);
     memset(demuxer, 0, sizeof(*demuxer));
     demuxer->seek_mode = -1;
+    demuxer->realtime = 0;
+    demuxer->eof = 0;
+    demuxer->max_frame_duration = 0.0;
     demuxer->input_url = av_strdup(input_url);
     if (!demuxer->input_url)
         return AVERROR(ENOMEM);
@@ -26,6 +29,9 @@ void demuxer_destroy(Demuxer *demuxer)
     av_freep(&demuxer->input_url);
     demuxer->seek_mode = -1;
     demuxer->abort_request = 0;
+    demuxer->realtime = 0;
+    demuxer->eof = 0;
+    demuxer->max_frame_duration = 0.0;
 }
 
 void demuxer_request_abort(Demuxer *demuxer)
@@ -54,5 +60,47 @@ const char *demuxer_get_input_name(const Demuxer *demuxer)
     if (!demuxer || !demuxer->input_url)
         return "";
     return demuxer->input_url;
+}
+
+int demuxer_is_realtime(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0;
+    return demuxer->realtime;
+}
+
+int demuxer_is_eof(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0;
+    return demuxer->eof;
+}
+
+double demuxer_get_max_frame_duration(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0.0;
+    return demuxer->max_frame_duration;
+}
+
+void demuxer_set_realtime(Demuxer *demuxer, int realtime)
+{
+    if (!demuxer)
+        return;
+    demuxer->realtime = realtime;
+}
+
+void demuxer_set_eof(Demuxer *demuxer, int eof)
+{
+    if (!demuxer)
+        return;
+    demuxer->eof = eof;
+}
+
+void demuxer_set_max_frame_duration(Demuxer *demuxer, double max_frame_duration)
+{
+    if (!demuxer)
+        return;
+    demuxer->max_frame_duration = max_frame_duration;
 }
 

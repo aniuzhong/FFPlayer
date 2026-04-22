@@ -69,7 +69,6 @@ typedef struct VideoState {
     int64_t seek_pos;
     int64_t seek_rel;
     int read_pause_return;
-    int realtime;
 
     Clock *audclk;
     Clock *vidclk;
@@ -137,9 +136,7 @@ typedef struct VideoState {
     int video_stream;
     AVStream *video_st;
     PacketQueue *videoq;
-    double max_frame_duration;
     struct SwsContext *sub_convert_ctx;
-    int eof;
 
     int width, height, xleft, ytop;
     int step;

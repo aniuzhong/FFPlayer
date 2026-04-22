@@ -128,7 +128,7 @@ static int handle_seek_request(VideoState *is, AVFormatContext *ic)
     }
     is->seek_req = 0;
     is->queue_attachments_req = 1;
-    is->eof = 0;
+    demuxer_set_eof(demuxer, 0);
     if (is->paused && is->on_step_frame)
         is->on_step_frame(is);
     
@@ -184,7 +184,7 @@ int read_thread(void *arg)
         goto fail;
     }
 
-    is->eof = 0;
+    demuxer_set_eof(demuxer, 0);
 
     pkt = av_packet_alloc();
     if (!pkt) {
@@ -229,9 +229,10 @@ int read_thread(void *arg)
                              !!(ic->iformat->flags & AVFMT_TS_DISCONT) &&
                              strcmp("ogg", ic->iformat->name);
 
-    is->max_frame_duration = (ic->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0;
+    demuxer_set_max_frame_duration(demuxer,
+                                   (ic->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0);
 
-    is->realtime = is_realtime(ic);
+    demuxer_set_realtime(demuxer, is_realtime(ic));
 
     /* find and open the best streams */
     if (find_stream_components(is) < 0) {
@@ -261,7 +262,7 @@ int read_thread(void *arg)
             goto fail;
 
         /* throttle reading if queue is full or has enough packets */
-        if (!is->realtime &&
+        if (!demuxer_is_realtime(demuxer) &&
               (packet_queue_get_size(is->audioq) +
                packet_queue_get_size(is->videoq) +
                packet_queue_get_size(is->subtitleq) > MAX_QUEUE_SIZE
@@ -277,14 +278,14 @@ int read_thread(void *arg)
         /* read one packet from the stream */
         ret = av_read_frame(ic, pkt);
         if (ret < 0) {
-            if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !is->eof) {
+            if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !demuxer_is_eof(demuxer)) {
                 if (is->video_stream >= 0)
                     packet_queue_put_nullpacket(is->videoq, pkt, is->video_stream);
                 if (is->audio_stream >= 0)
                     packet_queue_put_nullpacket(is->audioq, pkt, is->audio_stream);
                 if (is->subtitle_stream >= 0)
                     packet_queue_put_nullpacket(is->subtitleq, pkt, is->subtitle_stream);
-                is->eof = 1;
+                demuxer_set_eof(demuxer, 1);
             }
             if (ic->pb && ic->pb->error)
                 break;
@@ -293,7 +294,7 @@ int read_thread(void *arg)
             SDL_UnlockMutex(wait_mutex);
             continue;
         } else {
-            is->eof = 0;
+            demuxer_set_eof(demuxer, 0);
         }
 
         ic->streams[pkt->stream_index]->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;

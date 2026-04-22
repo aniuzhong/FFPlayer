@@ -501,7 +501,8 @@ void video_renderer_refresh(VideoRenderer *vr, VideoState *is, double *remaining
     double time;
     Frame *sp, *sp2;
 
-    if (!is->paused && av_sync_is_external_clock_master(&is->av_sync) && is->realtime)
+    if (!is->paused && av_sync_is_external_clock_master(&is->av_sync) &&
+        demuxer_is_realtime(&is->demuxer))
         check_external_clock_speed(&is->av_sync);
 
     if (is->show_mode != SHOW_MODE_VIDEO && is->audio_st) {
