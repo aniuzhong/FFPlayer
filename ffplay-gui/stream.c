@@ -101,9 +101,9 @@ void stream_handle_window_size_changed(VideoState *is, int width, int height)
         return;
     is->width = width;
     is->height = height;
-    if (is->vis_texture) {
-        SDL_DestroyTexture(is->vis_texture);
-        is->vis_texture = NULL;
+    if (is->video_renderer && is->video_renderer->vis_texture) {
+        SDL_DestroyTexture(is->video_renderer->vis_texture);
+        is->video_renderer->vis_texture = NULL;
     }
     stream_request_refresh(is);
 }
@@ -524,13 +524,14 @@ void stream_close(VideoState *is)
         frame_queue_free(&is->subpq);
     if (is->continue_read_thread)
         SDL_DestroyCond(is->continue_read_thread);
-    sws_freeContext(is->sub_convert_ctx);
-    if (is->vis_texture)
-        SDL_DestroyTexture(is->vis_texture);
-    if (is->vid_texture)
-        SDL_DestroyTexture(is->vid_texture);
-    if (is->sub_texture)
-        SDL_DestroyTexture(is->sub_texture);
+    sws_freeContext(is->video_renderer->sub_convert_ctx);
+    is->video_renderer->sub_convert_ctx = NULL;
+    if (is->video_renderer->vis_texture)
+        SDL_DestroyTexture(is->video_renderer->vis_texture);
+    if (is->video_renderer->vid_texture)
+        SDL_DestroyTexture(is->video_renderer->vid_texture);
+    if (is->video_renderer->sub_texture)
+        SDL_DestroyTexture(is->video_renderer->sub_texture);
     clock_destroy(&is->audclk);
     clock_destroy(&is->vidclk);
     clock_destroy(&is->extclk);

@@ -10,16 +10,9 @@
 #include "libavutil/time.h"
 
 /* Context binding */
-void av_sync_bind(AvSync *sync,
-                  Clock *audclk,
-                  Clock *vidclk,
-                  Clock *extclk,
-                  PacketQueue *audioq,
-                  PacketQueue *videoq,
-                  AVStream **audio_st,
-                  int *audio_stream,
-                  int *video_stream,
-                  double *max_frame_duration)
+void av_sync_bind(AvSync *sync, Clock *audclk, Clock *vidclk, Clock *extclk,
+                  PacketQueue *audioq, PacketQueue *videoq, AVStream **audio_st,
+                  int *audio_stream, int *video_stream, double *max_frame_duration)
 {
     sync->audclk = audclk;
     sync->vidclk = vidclk;

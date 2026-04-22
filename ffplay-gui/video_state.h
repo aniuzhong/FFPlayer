@@ -18,18 +18,6 @@
 
 #define VIDEO_BACKGROUND_TILE_SIZE 64
 
-enum VideoBackgroundType {
-    VIDEO_BACKGROUND_TILES,
-    VIDEO_BACKGROUND_COLOR,
-    VIDEO_BACKGROUND_NONE,
-};
-
-typedef struct RenderParams {
-    SDL_Rect target_rect;
-    uint8_t video_background_color[4];
-    enum VideoBackgroundType video_background_type;
-} RenderParams;
-
 #define MAX_QUEUE_SIZE (15 * 1024 * 1024)
 #define MIN_FRAMES 25
 
@@ -55,6 +43,12 @@ enum ShowMode {
 
 typedef struct AudioDevice AudioDevice;
 typedef struct VideoRenderer VideoRenderer;
+
+enum VideoBackgroundType {
+    VIDEO_BACKGROUND_TILES,
+    VIDEO_BACKGROUND_COLOR,
+    VIDEO_BACKGROUND_NONE,
+};
 
 typedef struct VideoState {
     SDL_Thread *read_tid;
@@ -119,10 +113,6 @@ typedef struct VideoState {
     AVComplexFloat *rdft_data;
     int xpos;
     double last_vis_time;
-    RenderParams render_params;
-    SDL_Texture *vis_texture;
-    SDL_Texture *sub_texture;
-    SDL_Texture *vid_texture;
 
     int subtitle_stream;
     AVStream *subtitle_st;
@@ -134,7 +124,6 @@ typedef struct VideoState {
     int video_stream;
     AVStream *video_st;
     PacketQueue *videoq;
-    struct SwsContext *sub_convert_ctx;
 
     int width, height, xleft, ytop;
     int step;

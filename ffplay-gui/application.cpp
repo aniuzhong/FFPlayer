@@ -143,8 +143,9 @@ static void sigterm_handler(int sig)
     exit(123);
 }
 
-static const char *video_window_title(VideoState *is, const char *fallback)
+static const char *video_window_title(void *opaque, const char *fallback)
 {
+    VideoState *is = (VideoState *)opaque;
     const char *title = demuxer_get_input_name(&is->demuxer);
     return (title && title[0]) ? title : fallback;
 }
@@ -226,7 +227,7 @@ void Application::ShutdownImGui()
 void Application::RefreshWindowTitle()
 {
     if (stream_) {
-        const char *title = video_window_title(stream_, "ffplay-gui");
+        const char *title = video_window_title((void *)stream_, "ffplay-gui");
         SDL_SetWindowTitle(window_, title ? title : "ffplay-gui");
         return;
     }
