@@ -90,6 +90,83 @@ static int find_stream_components(VideoState *is)
     return 0;
 }
 
+/* handle pause and resume for the stream */
+static void handle_pause_resume(VideoState *is, AVFormatContext *ic)
+{
+    if (is->paused != is->last_paused) {
+        is->last_paused = is->paused;
+        if (is->paused)
+            is->read_pause_return = av_read_pause(ic);
+        else
+            av_read_play(ic);
+    }
+}
+
+/* handle seek request from user */
+static int handle_seek_request(VideoState *is, AVFormatContext *ic)
+{
+    Demuxer *demuxer = &is->demuxer;
+    
+    if (!is->seek_req)
+        return 0;
+    
+    int64_t seek_target = is->seek_pos;
+    int64_t seek_min    = is->seek_rel > 0 ? seek_target - is->seek_rel + 2: INT64_MIN;
+    int64_t seek_max    = is->seek_rel < 0 ? seek_target - is->seek_rel - 2: INT64_MAX;
+
+    int ret = avformat_seek_file(demuxer->ic, -1, seek_min, seek_target, seek_max, is->seek_flags);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "%s: error while seeking\n", demuxer->ic->url);
+    } else {
+        if (is->audio_stream >= 0)
+            packet_queue_flush(is->audioq);
+        if (is->subtitle_stream >= 0)
+            packet_queue_flush(is->subtitleq);
+        if (is->video_stream >= 0)
+            packet_queue_flush(is->videoq);
+        av_sync_seek_reset_extclk(&is->av_sync, !!(is->seek_flags & AVSEEK_FLAG_BYTE), seek_target);
+    }
+    is->seek_req = 0;
+    is->queue_attachments_req = 1;
+    is->eof = 0;
+    if (is->paused && is->on_step_frame)
+        is->on_step_frame(is);
+    
+    return 0;
+}
+
+/* queue attached picture packets (e.g., album art) */
+static int handle_queue_attachments(VideoState *is, AVPacket *pkt)
+{
+    if (!is->queue_attachments_req)
+        return 0;
+    
+    if (is->video_st && is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC) {
+        int ret = av_packet_ref(pkt, &is->video_st->attached_pic);
+        if (ret < 0)
+            return ret;
+        packet_queue_put(is->videoq, pkt);
+        packet_queue_put_nullpacket(is->videoq, pkt, is->video_stream);
+    }
+    is->queue_attachments_req = 0;
+    return 0;
+}
+
+/* route packet to appropriate queue based on stream index */
+static void route_packet_to_queue(VideoState *is, AVPacket *pkt)
+{
+    if (pkt->stream_index == is->audio_stream) {
+        packet_queue_put(is->audioq, pkt);
+    } else if (pkt->stream_index == is->video_stream
+               && !(is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
+        packet_queue_put(is->videoq, pkt);
+    } else if (pkt->stream_index == is->subtitle_stream) {
+        packet_queue_put(is->subtitleq, pkt);
+    } else {
+        av_packet_unref(pkt);
+    }
+}
+
 /* this thread gets the stream from the disk or the network */
 int read_thread(void *arg)
 {
@@ -165,13 +242,9 @@ int read_thread(void *arg)
     for (;;) {
         if (demuxer_is_aborted(demuxer))
             break;
-        if (is->paused != is->last_paused) {
-            is->last_paused = is->paused;
-            if (is->paused)
-                is->read_pause_return = av_read_pause(ic);
-            else
-                av_read_play(ic);
-        }
+        
+        handle_pause_resume(is, ic);
+        
 #if CONFIG_RTSP_DEMUXER || CONFIG_MMSH_PROTOCOL
         if (is->paused &&
                 (!strcmp(ic->iformat->name, "rtsp") ||
@@ -180,40 +253,14 @@ int read_thread(void *arg)
             continue;
         }
 #endif
-        if (is->seek_req) {
-            int64_t seek_target = is->seek_pos;
-            int64_t seek_min    = is->seek_rel > 0 ? seek_target - is->seek_rel + 2: INT64_MIN;
-            int64_t seek_max    = is->seek_rel < 0 ? seek_target - is->seek_rel - 2: INT64_MAX;
+        
+        if (handle_seek_request(is, ic) < 0)
+            goto fail;
+        
+        if (handle_queue_attachments(is, pkt) < 0)
+            goto fail;
 
-            ret = avformat_seek_file(demuxer->ic, -1, seek_min, seek_target, seek_max, is->seek_flags);
-            if (ret < 0) {
-                av_log(NULL, AV_LOG_ERROR,
-                       "%s: error while seeking\n", demuxer->ic->url);
-            } else {
-                if (is->audio_stream >= 0)
-                    packet_queue_flush(is->audioq);
-                if (is->subtitle_stream >= 0)
-                    packet_queue_flush(is->subtitleq);
-                if (is->video_stream >= 0)
-                    packet_queue_flush(is->videoq);
-                av_sync_seek_reset_extclk(&is->av_sync, !!(is->seek_flags & AVSEEK_FLAG_BYTE), seek_target);
-            }
-            is->seek_req = 0;
-            is->queue_attachments_req = 1;
-            is->eof = 0;
-            if (is->paused && is->on_step_frame)
-                is->on_step_frame(is);
-        }
-        if (is->queue_attachments_req) {
-            if (is->video_st && is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC) {
-                if ((ret = av_packet_ref(pkt, &is->video_st->attached_pic)) < 0)
-                    goto fail;
-                packet_queue_put(is->videoq, pkt);
-                packet_queue_put_nullpacket(is->videoq, pkt, is->video_stream);
-            }
-            is->queue_attachments_req = 0;
-        }
-
+        /* throttle reading if queue is full or has enough packets */
         if (!is->realtime &&
               (packet_queue_get_size(is->audioq) +
                packet_queue_get_size(is->videoq) +
@@ -226,6 +273,8 @@ int read_thread(void *arg)
             SDL_UnlockMutex(wait_mutex);
             continue;
         }
+        
+        /* read one packet from the stream */
         ret = av_read_frame(ic, pkt);
         if (ret < 0) {
             if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !is->eof) {
@@ -249,16 +298,7 @@ int read_thread(void *arg)
 
         ic->streams[pkt->stream_index]->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
 
-        if (pkt->stream_index == is->audio_stream) {
-            packet_queue_put(is->audioq, pkt);
-        } else if (pkt->stream_index == is->video_stream
-                   && !(is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC)) {
-            packet_queue_put(is->videoq, pkt);
-        } else if (pkt->stream_index == is->subtitle_stream) {
-            packet_queue_put(is->subtitleq, pkt);
-        } else {
-            av_packet_unref(pkt);
-        }
+        route_packet_to_queue(is, pkt);
     }
 
     ret = 0;
