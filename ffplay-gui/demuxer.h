@@ -7,8 +7,6 @@
 extern "C" {
 #endif
 
-struct VideoState;
-
 typedef struct Demuxer {
     AVFormatContext *ic;
     int seek_mode;
