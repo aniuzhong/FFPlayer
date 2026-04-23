@@ -41,7 +41,6 @@ const int program_birth_year = 2003;
 static constexpr int kInitialDefaultWidth = 640;
 static constexpr int kInitialDefaultHeight = 480;
 static constexpr float kSeekIntervalSeconds = 10.0f;
-static constexpr double kDefaultRdftSpeed = 0.02;
 static constexpr size_t kMaxLogLines = 2000;
 
 namespace {
@@ -655,7 +654,6 @@ void Application::ConfigureVideoRenderer()
     video_renderer_ctx_.default_width = kInitialDefaultWidth;
     video_renderer_ctx_.default_height = kInitialDefaultHeight;
     video_renderer_ctx_.is_full_screen = &is_full_screen_;
-    video_renderer_ctx_.rdftspeed = kDefaultRdftSpeed;
     video_renderer_ctx_.program_name = program_name;
     video_renderer_ctx_.title_provider = video_window_title;
 }

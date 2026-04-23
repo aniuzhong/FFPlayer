@@ -15,6 +15,7 @@
 #include "audio_thread.h"
 #include "video_thread.h"
 #include "subtitle_thread.h"
+#include "audio_visualizer.h"
 #include "stream.h"
 
 #define VIDEO_PICTURE_QUEUE_SIZE 3
@@ -101,10 +102,7 @@ void stream_handle_window_size_changed(VideoState *is, int width, int height)
         return;
     is->width = width;
     is->height = height;
-    if (is->video_renderer && is->video_renderer->vis_texture) {
-        SDL_DestroyTexture(is->video_renderer->vis_texture);
-        is->video_renderer->vis_texture = NULL;
-    }
+    audio_visualizer_invalidate_texture(is->audio_visualizer);
     stream_request_refresh(is);
 }
 
@@ -282,6 +280,11 @@ VideoState *stream_open(const char *filename,
     is->audio_pipeline->audio_clock_serial = -1;
     is->audio_pipeline->audio_volume = SDL_MIX_MAXVOLUME;
     is->audio_pipeline->muted = 0;
+    is->audio_visualizer = audio_visualizer_create();
+    if (!is->audio_visualizer)
+        goto fail;
+    audio_visualizer_bind(is->audio_visualizer, is->audio_pipeline,
+                          &is->paused, (int *)&is->show_mode);
     if (demuxer_start(is->demuxer, read_thread, is) < 0) {
         av_log(NULL, AV_LOG_FATAL, "Failed to start demuxer thread\n");
         goto fail;
@@ -450,13 +453,7 @@ void stream_component_close(VideoState *is, int stream_index)
         decoder_destroy(&is->auddec);
         audio_pipeline_reset(is->audio_pipeline);
 
-        if (is->rdft) {
-            av_tx_uninit(&is->rdft);
-            av_freep(&is->real_data);
-            av_freep(&is->rdft_data);
-            is->rdft = NULL;
-            is->rdft_bits = 0;
-        }
+        audio_visualizer_reset(is->audio_visualizer);
         break;
     case AVMEDIA_TYPE_VIDEO:
         decoder_abort(&is->viddec, is->pictq);
@@ -515,10 +512,9 @@ void stream_close(VideoState *is)
         frame_queue_free(&is->sampq);
     if (frame_queue_is_initialized(is->subpq))
         frame_queue_free(&is->subpq);
+    audio_visualizer_free(&is->audio_visualizer);
     sws_freeContext(is->video_renderer->sub_convert_ctx);
     is->video_renderer->sub_convert_ctx = NULL;
-    if (is->video_renderer->vis_texture)
-        SDL_DestroyTexture(is->video_renderer->vis_texture);
     if (is->video_renderer->vid_texture)
         SDL_DestroyTexture(is->video_renderer->vid_texture);
     if (is->video_renderer->sub_texture)

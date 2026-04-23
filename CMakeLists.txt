@@ -156,6 +156,7 @@ add_executable(${_ffplay_gui_target} WIN32
   ffplay-gui/application.cpp
   ffplay-gui/audio_device.c
   ffplay-gui/audio_pipeline.c
+  ffplay-gui/audio_visualizer.c
   ffplay-gui/audio_thread.c
   ffplay-gui/video_thread.c
   ffplay-gui/video_renderer.c

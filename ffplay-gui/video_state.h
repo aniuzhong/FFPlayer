@@ -4,7 +4,6 @@
 #include <SDL.h>
 #include <SDL_thread.h>
 
-#include <libavutil/tx.h>
 #include <libswscale/swscale.h>
 #include <libavformat/avformat.h>
 #include <libavfilter/avfilter.h>
@@ -31,6 +30,7 @@
 #define FF_QUIT_EVENT    (SDL_USEREVENT + 2)
 
 typedef struct AudioDevice AudioDevice;
+typedef struct AudioVisualizer AudioVisualizer;
 typedef struct VideoRenderer VideoRenderer;
 
 enum VideoBackgroundType {
@@ -70,14 +70,7 @@ typedef struct VideoState {
 
     enum ShowMode show_mode;
     AudioPipeline *audio_pipeline;
-    int last_i_start;
-    AVTXContext *rdft;
-    av_tx_fn rdft_fn;
-    int rdft_bits;
-    float *real_data;
-    AVComplexFloat *rdft_data;
-    int xpos;
-    double last_vis_time;
+    AudioVisualizer *audio_visualizer;
 
     int subtitle_stream;
     AVStream *subtitle_st;

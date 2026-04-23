@@ -12,6 +12,7 @@
 #include "demuxer.h"
 #include "packet_queue.h"
 #include "stream.h"
+#include "audio_visualizer.h"
 #include "video_renderer.h"
 
 static const struct TextureFormatEntry {
@@ -204,11 +205,6 @@ static void draw_video_background(VideoRenderer *vr, VideoState *is)
     }
 }
 
-static inline int compute_mod(int a, int b)
-{
-    return a < 0 ? a%b + b : a%b;
-}
-
 static void video_image_display(VideoRenderer *vr, VideoState *is)
 {
     Frame *vp;
@@ -296,148 +292,6 @@ static void video_image_display(VideoRenderer *vr, VideoState *is)
     }
 }
 
-static void video_audio_display(VideoRenderer *vr, VideoState *s)
-{
-    int i, i_start, x, y1, y, ys, delay, n, nb_display_channels;
-    int ch, channels, h, h2;
-    int64_t time_diff;
-    int rdft_bits, nb_freq;
-
-    for (rdft_bits = 1; (1 << rdft_bits) < 2 * s->height; rdft_bits++)
-        ;
-    nb_freq = 1 << (rdft_bits - 1);
-    channels = s->audio_pipeline->audio_tgt.ch_layout.nb_channels;
-    nb_display_channels = channels;
-    if (!s->paused) {
-        int data_used= s->show_mode == SHOW_MODE_WAVES ? s->width : (2*nb_freq);
-        n = 2 * channels;
-        delay = s->audio_pipeline->audio_write_buf_size;
-        delay /= n;
-        if (s->audio_pipeline->audio_callback_time) {
-            time_diff = av_gettime_relative() - s->audio_pipeline->audio_callback_time;
-            delay -= (int)((time_diff * s->audio_pipeline->audio_tgt.freq) / 1000000);
-        }
-        delay += 2 * data_used;
-        if (delay < data_used)
-            delay = data_used;
-
-        i_start= x = compute_mod(s->audio_pipeline->sample_array_index - delay * channels, SAMPLE_ARRAY_SIZE);
-        if (s->show_mode == SHOW_MODE_WAVES) {
-            h = INT_MIN;
-            for (i = 0; i < 1000; i += channels) {
-                int idx = (SAMPLE_ARRAY_SIZE + x - i) % SAMPLE_ARRAY_SIZE;
-                int a = s->audio_pipeline->sample_array[idx];
-                int b = s->audio_pipeline->sample_array[(idx + 4 * channels) % SAMPLE_ARRAY_SIZE];
-                int c = s->audio_pipeline->sample_array[(idx + 5 * channels) % SAMPLE_ARRAY_SIZE];
-                int d = s->audio_pipeline->sample_array[(idx + 9 * channels) % SAMPLE_ARRAY_SIZE];
-                int score = a - d;
-                if (h < score && (b ^ c) < 0) {
-                    h = score;
-                    i_start = idx;
-                }
-            }
-        }
-        s->last_i_start = i_start;
-    } else {
-        i_start = s->last_i_start;
-    }
-
-    if (s->show_mode == SHOW_MODE_WAVES) {
-        SDL_SetRenderDrawColor(vr->renderer, 255, 255, 255, 255);
-        h = s->height / nb_display_channels;
-        h2 = (h * 9) / 20;
-        for (ch = 0; ch < nb_display_channels; ch++) {
-            i = i_start + ch;
-            y1 = s->ytop + ch * h + (h / 2);
-            for (x = 0; x < s->width; x++) {
-                y = (s->audio_pipeline->sample_array[i] * h2) >> 15;
-                if (y < 0) {
-                    y = -y;
-                    ys = y1 - y;
-                } else {
-                    ys = y1;
-                }
-                fill_rectangle(vr->renderer, s->xleft + x, ys, 1, y);
-                i += channels;
-                if (i >= SAMPLE_ARRAY_SIZE)
-                    i -= SAMPLE_ARRAY_SIZE;
-            }
-        }
-
-        SDL_SetRenderDrawColor(vr->renderer, 0, 0, 255, 255);
-        for (ch = 1; ch < nb_display_channels; ch++) {
-            y = s->ytop + ch * h;
-            fill_rectangle(vr->renderer, s->xleft, y, s->width, 1);
-        }
-    } else {
-        int err = 0;
-        if (realloc_texture(vr->renderer, &vr->vis_texture, SDL_PIXELFORMAT_ARGB8888, s->width, s->height, SDL_BLENDMODE_NONE, 1) < 0)
-            return;
-
-        if (s->xpos >= s->width)
-            s->xpos = 0;
-        nb_display_channels= FFMIN(nb_display_channels, 2);
-        if (rdft_bits != s->rdft_bits) {
-            const float rdft_scale = 1.0;
-            av_tx_uninit(&s->rdft);
-            av_freep(&s->real_data);
-            av_freep(&s->rdft_data);
-            s->rdft_bits = rdft_bits;
-            s->real_data = av_malloc_array(nb_freq, 4 * sizeof(*s->real_data));
-            s->rdft_data = av_malloc_array(nb_freq + 1, 2 * sizeof(*s->rdft_data));
-            err = av_tx_init(&s->rdft, &s->rdft_fn, AV_TX_FLOAT_RDFT,
-                             0, 1 << rdft_bits, &rdft_scale, 0);
-        }
-        if (err < 0 || !s->rdft_data) {
-            av_log(NULL, AV_LOG_ERROR, "Failed to allocate buffers for RDFT, switching to waves display\n");
-            s->show_mode = SHOW_MODE_WAVES;
-        } else {
-            float *data_in[2];
-            AVComplexFloat *data[2];
-            SDL_Rect rect;
-            uint32_t *pixels;
-            int pitch;
-            rect.x = s->xpos;
-            rect.y = 0;
-            rect.w = 1;
-            rect.h = s->height;
-            for (ch = 0; ch < nb_display_channels; ch++) {
-                data_in[ch] = s->real_data + 2 * nb_freq * ch;
-                data[ch] = s->rdft_data + nb_freq * ch;
-                i = i_start + ch;
-                for (x = 0; x < 2 * nb_freq; x++) {
-                    double w = (x-nb_freq) * (1.0 / nb_freq);
-                    data_in[ch][x] = s->audio_pipeline->sample_array[i] * (float)(1.0 - w * w);
-                    i += channels;
-                    if (i >= SAMPLE_ARRAY_SIZE)
-                        i -= SAMPLE_ARRAY_SIZE;
-                }
-                s->rdft_fn(s->rdft, data[ch], data_in[ch], sizeof(float));
-                data[ch][0].im = data[ch][nb_freq].re;
-                data[ch][nb_freq].re = 0;
-            }
-            if (!SDL_LockTexture(vr->vis_texture, &rect, (void **)&pixels, &pitch)) {
-                pitch >>= 2;
-                pixels += pitch * s->height;
-                for (y = 0; y < s->height; y++) {
-                    double w = 1 / sqrt(nb_freq);
-                    int a = (int)sqrt(w * sqrt(data[0][y].re * data[0][y].re + data[0][y].im * data[0][y].im));
-                    int b = (nb_display_channels == 2 ) ? (int)sqrt(w * hypot(data[1][y].re, data[1][y].im))
-                                                        : a;
-                    a = FFMIN(a, 255);
-                    b = FFMIN(b, 255);
-                    pixels -= pitch;
-                    *pixels = (a << 16) + (b << 8) + ((a+b) >> 1);
-                }
-                SDL_UnlockTexture(vr->vis_texture);
-            }
-            SDL_RenderCopy(vr->renderer, vr->vis_texture, NULL, NULL);
-        }
-        if (!s->paused)
-            s->xpos++;
-    }
-}
-
 void video_renderer_set_default_window_size(VideoRenderer *vr, VideoState *is, int width, int height, AVRational sar)
 {
     SDL_Rect rect;
@@ -486,7 +340,7 @@ void video_renderer_display(VideoRenderer *vr, VideoState *is)
     SDL_SetRenderDrawColor(vr->renderer, 0, 0, 0, 255);
     SDL_RenderClear(vr->renderer);
     if (is->audio_st && is->show_mode != SHOW_MODE_VIDEO)
-        video_audio_display(vr, is);
+        audio_visualizer_render(is->audio_visualizer, vr->renderer, is->xleft, is->ytop, is->width, is->height);
     else if (is->video_st)
         video_image_display(vr, is);
 }
@@ -507,13 +361,13 @@ void video_renderer_refresh(VideoRenderer *vr, VideoState *is, double *remaining
         demuxer_is_realtime(is->demuxer))
         check_external_clock_speed(&is->av_sync);
 
-    if (is->show_mode != SHOW_MODE_VIDEO && is->audio_st) {
+    if (is->show_mode != SHOW_MODE_VIDEO && is->audio_st && is->audio_visualizer) {
         time = av_gettime_relative() / 1000000.0;
-        if (is->force_refresh || is->last_vis_time + vr->rdftspeed < time) {
+        if (is->force_refresh || is->audio_visualizer->last_vis_time + is->audio_visualizer->rdftspeed < time) {
             video_renderer_display(vr, is);
-            is->last_vis_time = time;
+            is->audio_visualizer->last_vis_time = time;
         }
-        *remaining_time = FFMIN(*remaining_time, is->last_vis_time + vr->rdftspeed - time);
+        *remaining_time = FFMIN(*remaining_time, is->audio_visualizer->last_vis_time + is->audio_visualizer->rdftspeed - time);
     }
 
     if (is->video_st) {
