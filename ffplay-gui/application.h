@@ -9,6 +9,7 @@ extern "C" {
 #endif
 #include "audio_device.h"
 #include "video_renderer.h"
+#include "ffplayer.h"
 #ifdef __cplusplus
 }
 #endif
@@ -26,7 +27,7 @@ private:
     void RenderImGui();
     void RenderLogPanel(float bar_height);
     bool OpenFileDialogAndPlay();
-    [[noreturn]] void DoExit(VideoState *is);
+    [[noreturn]] void DoExit();
     void ToggleFullScreen();
     void RefreshLoopWaitEvent(SDL_Event *event);
     void InitWindowAndRenderer();
@@ -40,7 +41,7 @@ private:
     int64_t cursor_last_shown_ = 0;
     int cursor_hidden_ = 0;
     int is_full_screen_ = 0;
-    VideoState *stream_ = nullptr;
+    FFPlayer *player_ = nullptr;
     VideoRenderer video_renderer_ctx_ = {};
     bool open_dialog_active_ = false;
     bool imgui_ready_ = false;

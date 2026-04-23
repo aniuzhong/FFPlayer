@@ -28,11 +28,6 @@ extern "C" {
 #include <commdlg.h>
 #endif
 
-#include "av_sync.h"
-#include "audio_pipeline.h"
-#include "demuxer.h"
-#include "filter.h"
-#include "stream.h"
 #include "application.h"
 
 const char program_name[] = "ffplay";
@@ -140,13 +135,6 @@ static void sigterm_handler(int sig)
     exit(123);
 }
 
-static const char *video_window_title(void *opaque, const char *fallback)
-{
-    VideoState *is = (VideoState *)opaque;
-    const char *title = demuxer_get_input_name(is->demuxer);
-    return (title && title[0]) ? title : fallback;
-}
-
 int Application::Execute()
 {
     int flags;
@@ -178,7 +166,7 @@ int Application::Execute()
     SDL_ShowWindow(window_);
     SDL_SetWindowTitle(window_, "ffplay-gui");
 
-    audio_device_set_open_cb(&audio_device_, audio_pipeline_open);
+    player_ = ffplayer_create(&audio_device_, &video_renderer_ctx_);
     InitImGui();
 
     EventLoop();
@@ -223,9 +211,9 @@ void Application::ShutdownImGui()
 
 void Application::RefreshWindowTitle()
 {
-    if (stream_) {
-        const char *title = video_window_title((void *)stream_, "ffplay-gui");
-        SDL_SetWindowTitle(window_, title ? title : "ffplay-gui");
+    if (ffplayer_is_open(player_)) {
+        const char *title = ffplayer_get_media_title(player_);
+        SDL_SetWindowTitle(window_, (title && title[0]) ? title : "ffplay-gui");
         return;
     }
     SDL_SetWindowTitle(window_, "ffplay-gui - No media loaded");
@@ -233,28 +221,7 @@ void Application::RefreshWindowTitle()
 
 void Application::SeekToRatio(float ratio)
 {
-    int64_t ts;
-    int64_t size;
-    AVFormatContext *ic;
-    if (!stream_)
-        return;
-    ic = demuxer_get_ic(stream_->demuxer);
-    if (!ic)
-        return;
-    ratio = av_clipf(ratio, 0.0f, 1.0f);
-    if (demuxer_get_seek_mode(stream_->demuxer) || ic->duration <= 0) {
-        if (!ic->pb)
-            return;
-        size = avio_size(ic->pb);
-        if (size <= 0)
-            return;
-        stream_seek(stream_, (int64_t)(size * ratio), 0, 1);
-        return;
-    }
-    ts = (int64_t)(ratio * ic->duration);
-    if (ic->start_time != AV_NOPTS_VALUE)
-        ts += ic->start_time;
-    stream_seek(stream_, ts, 0, 0);
+    ffplayer_seek_to_ratio(player_, ratio);
 }
 
 void Application::RenderImGui()
@@ -277,19 +244,14 @@ void Application::RenderImGui()
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 
-    if (stream_ && demuxer_get_ic(stream_->demuxer)) {
-        AVFormatContext *ic = demuxer_get_ic(stream_->demuxer);
-        has_known_duration = ic->duration > 0;
-        can_approx_seek = ic->pb && avio_size(ic->pb) > 0;
-        can_seek = has_known_duration || can_approx_seek;
+    if (ffplayer_is_open(player_)) {
+        duration_sec = ffplayer_get_duration(player_);
+        has_known_duration = duration_sec > 0;
+        can_seek = ffplayer_can_seek(player_);
+        can_approx_seek = can_seek && !has_known_duration;
 
         if (has_known_duration) {
-            duration_sec = ic->duration / (double)AV_TIME_BASE;
-            current_sec = stream_get_master_clock(stream_);
-            if (isnan(current_sec))
-                current_sec = 0.0;
-            if (ic->start_time != AV_NOPTS_VALUE)
-                current_sec -= ic->start_time / (double)AV_TIME_BASE;
+            current_sec = ffplayer_get_position(player_);
             current_sec = FFMAX(0.0, FFMIN(current_sec, duration_sec));
             progress = duration_sec > 0.0 ? (float)(current_sec / duration_sec) : 0.0f;
 
@@ -298,7 +260,7 @@ void Application::RenderImGui()
              * decodable payload duration. At EOF, snap near-tail progress to 100%
              * so the thumb reaches the right edge instead of stopping around 4.x/5s.
              */
-            if (demuxer_is_eof(stream_->demuxer) && progress > 0.90f)
+            if (ffplayer_is_eof(player_) && progress > 0.90f)
                 progress = 1.0f;
 
             if (!isfinite(progress))
@@ -306,18 +268,17 @@ void Application::RenderImGui()
             using_stable_progress = true;
             time_text = FormatDuration(current_sec) + " / " + FormatDuration(duration_sec);
         } else if (can_approx_seek) {
-            int64_t size = avio_size(ic->pb);
-            int64_t pos = avio_tell(ic->pb);
-            if (size > 0 && pos >= 0)
-                progress = av_clipf((float)pos / (float)size, 0.0f, 1.0f);
+            float bp = ffplayer_get_byte_progress(player_);
+            if (bp >= 0.0f)
+                progress = bp;
             time_text = "Unknown duration | Approx seek";
         } else {
             time_text = "Unknown duration";
         }
 
-        play_text = stream_->paused ? "Play" : "Pause";
+        play_text = ffplayer_is_paused(player_) ? "Play" : "Pause";
     }
-    if (!stream_)
+    if (!ffplayer_is_open(player_))
         stable_progress_ready_ = false;
 
     if (using_stable_progress && pending_seek_ratio_ < 0.0f) {
@@ -337,8 +298,8 @@ void Application::RenderImGui()
     }
     if (!isfinite(progress))
         progress = 0.0f;
-    if (stream_)
-        volume_percent = 100.0f * (float)stream_->audio_pipeline->audio_volume / (float)SDL_MIX_MAXVOLUME;
+    if (ffplayer_is_open(player_))
+        volume_percent = 100.0f * (float)ffplayer_get_volume(player_) / (float)SDL_MIX_MAXVOLUME;
 
     ImGui::SetNextWindowPos(ImVec2(0.0f, io.DisplaySize.y - bar_height));
     ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, bar_height));
@@ -347,7 +308,7 @@ void Application::RenderImGui()
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.03f, 0.04f, 0.08f, 0.85f));
     ImGui::Begin("PlayerControls", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
-    if (!stream_) {
+    if (!ffplayer_is_open(player_)) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("No media loaded");
         ImGui::SameLine();
@@ -382,7 +343,7 @@ void Application::RenderImGui()
                 margin - log_button_w);
 
         if (ImGui::Button(play_text.c_str()))
-            stream_toggle_pause_and_clear_step(stream_);
+            ffplayer_toggle_pause(player_);
         if (!hide_time_text) {
             ImGui::SameLine(0.0f, margin);
             ImGui::AlignTextToFramePadding();
@@ -417,7 +378,7 @@ void Application::RenderImGui()
         ImGui::SetNextItemWidth(volume_w);
         const char *volume_fmt = volume_w >= 72.0f ? "%.0f%%" : "";
         if (ImGui::SliderFloat("##volume", &volume_percent, 0.0f, 100.0f, volume_fmt)) {
-            stream_set_volume(stream_, (int)((volume_percent / 100.0f) * SDL_MIX_MAXVOLUME));
+            ffplayer_set_volume(player_, (int)((volume_percent / 100.0f) * SDL_MIX_MAXVOLUME));
         }
         ImGui::SameLine(0.0f, margin);
         if (ImGui::Button(show_log_panel_ ? "Hide Log" : "Log"))
@@ -534,22 +495,18 @@ bool Application::OpenFileDialogAndPlay()
         return false;
     }
 
-    if (stream_) {
-        stream_close(stream_);
-        stream_ = nullptr;
-    }
+    ffplayer_close(player_);
     stable_progress_ready_ = false;
 
-    stream_ = stream_open(utf8_path.data(), &audio_device_, &video_renderer_ctx_, nullptr);
-    if (!stream_) {
+    if (ffplayer_open(player_, utf8_path.data()) < 0) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Open failed", "Failed to open selected media file.", window_);
         RefreshWindowTitle();
         open_dialog_active_ = false;
         return false;
     }
-    stream_toggle_pause_and_clear_step(stream_);
-    // stream_toggle_mute(stream_);
-    stream_request_refresh(stream_);
+    ffplayer_toggle_pause(player_);
+    // ffplayer_toggle_mute(player_);
+    ffplayer_request_refresh(player_);
     stable_progress_ratio_ = 0.0f;
     stable_progress_ready_ = false;
 
@@ -561,14 +518,9 @@ bool Application::OpenFileDialogAndPlay()
 #endif
 }
 
-[[noreturn]] void Application::DoExit(VideoState *is)
+[[noreturn]] void Application::DoExit()
 {
-    VideoState *target = is ? is : stream_;
-    if (target) {
-        stream_close(target);
-        if (target == stream_)
-            stream_ = nullptr;
-    }
+    ffplayer_free(&player_);
     ShutdownImGui();
     if (renderer_) {
         SDL_DestroyRenderer(renderer_);
@@ -596,23 +548,23 @@ void Application::RefreshLoopWaitEvent(SDL_Event *event)
     double remaining_time = 0.0;
     SDL_PumpEvents();
     while (!SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT)) {
-        if (!cursor_hidden_ && av_gettime_relative() - cursor_last_shown_ > CURSOR_HIDE_DELAY) {
+        if (!cursor_hidden_ && av_gettime_relative() - cursor_last_shown_ > FFPLAYER_CURSOR_HIDE_DELAY) {
             SDL_ShowCursor(0);
             cursor_hidden_ = 1;
         }
         if (remaining_time > 0.0)
             av_usleep((int64_t)(remaining_time * 1000000.0));
-        remaining_time = REFRESH_RATE;
-        if (stream_ && stream_->show_mode != SHOW_MODE_NONE && (!stream_->paused || stream_->force_refresh))
-            stream_refresh(stream_, &remaining_time);
-        if (stream_)
-            video_renderer_display(stream_->video_renderer, stream_);
+        remaining_time = FFPLAYER_REFRESH_RATE;
+        if (ffplayer_needs_refresh(player_))
+            ffplayer_refresh(player_, &remaining_time);
+        if (ffplayer_is_open(player_))
+            ffplayer_display(player_);
         else {
             SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
             SDL_RenderClear(renderer_);
         }
         RenderImGui();
-        video_renderer_present(stream_ ? stream_->video_renderer : &video_renderer_ctx_);
+        video_renderer_present(&video_renderer_ctx_);
         SDL_PumpEvents();
     }
 }
@@ -629,7 +581,7 @@ void Application::InitWindowAndRenderer()
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
     if (!window_) {
         av_log(nullptr, AV_LOG_FATAL, "Failed to create window: %s", SDL_GetError());
-        DoExit(nullptr);
+        DoExit();
     }
 
     renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
@@ -643,7 +595,7 @@ void Application::InitWindowAndRenderer()
     }
     if (!renderer_ || !video_renderer_ctx_.renderer_info.num_texture_formats) {
         av_log(nullptr, AV_LOG_FATAL, "Failed to create window or renderer: %s", SDL_GetError());
-        DoExit(nullptr);
+        DoExit();
     }
 }
 
@@ -666,7 +618,7 @@ void Application::EventLoop()
         switch (event.type) {
         case SDL_KEYDOWN:
             if (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_q) {
-                DoExit(stream_);
+                DoExit();
                 break;
             }
             if (ImGui::GetIO().WantCaptureKeyboard)
@@ -677,63 +629,60 @@ void Application::EventLoop()
             }
             if (event.key.keysym.sym == SDLK_f) {
                 ToggleFullScreen();
-                if (stream_)
-                    stream_request_refresh(stream_);
+                ffplayer_request_refresh(player_);
                 break;
             }
-            if (!stream_)
+            if (!ffplayer_is_open(player_))
                 continue;
-            if (!stream_->width)
+            if (!ffplayer_is_renderer_open(player_))
                 continue;
             switch (event.key.keysym.sym) {
             case SDLK_p:
             case SDLK_SPACE:
-                stream_toggle_pause_and_clear_step(stream_);
+                ffplayer_toggle_pause(player_);
                 break;
             case SDLK_m:
-                stream_toggle_mute(stream_);
+                ffplayer_toggle_mute(player_);
                 break;
             case SDLK_KP_MULTIPLY:
             case SDLK_0:
-                stream_adjust_volume_step(stream_, 1, SDL_VOLUME_STEP);
+                ffplayer_adjust_volume_step(player_, 1, FFPLAYER_VOLUME_STEP);
                 break;
             case SDLK_KP_DIVIDE:
             case SDLK_9:
-                stream_adjust_volume_step(stream_, -1, SDL_VOLUME_STEP);
+                ffplayer_adjust_volume_step(player_, -1, FFPLAYER_VOLUME_STEP);
                 break;
             case SDLK_s:
-                stream_step(stream_);
+                ffplayer_step_frame(player_);
                 break;
             case SDLK_a:
-                stream_cycle_channel(stream_, AVMEDIA_TYPE_AUDIO);
+                ffplayer_cycle_audio_track(player_);
                 break;
             case SDLK_v:
-                stream_cycle_channel(stream_, AVMEDIA_TYPE_VIDEO);
+                ffplayer_cycle_video_track(player_);
                 break;
             case SDLK_c:
-                stream_cycle_channel(stream_, AVMEDIA_TYPE_VIDEO);
-                stream_cycle_channel(stream_, AVMEDIA_TYPE_AUDIO);
-                stream_cycle_channel(stream_, AVMEDIA_TYPE_SUBTITLE);
+                ffplayer_cycle_all_tracks(player_);
                 break;
             case SDLK_t:
-                stream_cycle_channel(stream_, AVMEDIA_TYPE_SUBTITLE);
+                ffplayer_cycle_subtitle_track(player_);
                 break;
             case SDLK_w:
-                stream_toggle_audio_display(stream_);
+                ffplayer_toggle_audio_display(player_);
                 break;
             case SDLK_PAGEUP:
-                if (!demuxer_get_ic(stream_->demuxer) || demuxer_get_ic(stream_->demuxer)->nb_chapters <= 1) {
+                if (!ffplayer_has_chapters(player_)) {
                     incr = 600.0;
                     goto do_seek;
                 }
-                stream_seek_chapter(stream_, 1);
+                ffplayer_seek_chapter(player_, 1);
                 break;
             case SDLK_PAGEDOWN:
-                if (!demuxer_get_ic(stream_->demuxer) || demuxer_get_ic(stream_->demuxer)->nb_chapters <= 1) {
+                if (!ffplayer_has_chapters(player_)) {
                     incr = -600.0;
                     goto do_seek;
                 }
-                stream_seek_chapter(stream_, -1);
+                ffplayer_seek_chapter(player_, -1);
                 break;
             case SDLK_LEFT:
                 incr = -kSeekIntervalSeconds;
@@ -747,7 +696,7 @@ void Application::EventLoop()
             case SDLK_DOWN:
                 incr = -60.0;
 do_seek:
-                stream_seek_relative(stream_, incr);
+                ffplayer_seek_relative(player_, incr);
                 break;
             default:
                 break;
@@ -760,8 +709,7 @@ do_seek:
                 static int64_t last_mouse_left_click = 0;
                 if (av_gettime_relative() - last_mouse_left_click <= 500000) {
                     ToggleFullScreen();
-                    if (stream_)
-                        stream_request_refresh(stream_);
+                    ffplayer_request_refresh(player_);
                     last_mouse_left_click = 0;
                 } else {
                     last_mouse_left_click = av_gettime_relative();
@@ -783,17 +731,14 @@ do_seek:
         case SDL_WINDOWEVENT:
             switch (event.window.event) {
             case SDL_WINDOWEVENT_SIZE_CHANGED:
-                if (stream_) {
-                    stream_handle_window_size_changed(stream_, event.window.data1, event.window.data2);
-                }
+                ffplayer_handle_window_size_changed(player_, event.window.data1, event.window.data2);
             case SDL_WINDOWEVENT_EXPOSED:
-                if (stream_)
-                    stream_request_refresh(stream_);
+                ffplayer_request_refresh(player_);
             }
             break;
         case SDL_QUIT:
-        case FF_QUIT_EVENT:
-            DoExit(stream_);
+        case FFPLAYER_QUIT_EVENT:
+            DoExit();
             break;
         default:
             break;
