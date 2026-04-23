@@ -26,21 +26,44 @@ typedef struct AudioDevice {
     int (*open_cb)(void *opaque, AVChannelLayout *wanted_channel_layout, int wanted_sample_rate, struct AudioParams *audio_hw_params);
 } AudioDevice;
 
+/**
+ *
+ */
 void audio_device_reset(AudioDevice *device);
+
+/**
+ *
+ */
 void audio_device_set_open_cb(AudioDevice *device,
                               int (*open_cb)(void *opaque, AVChannelLayout *wanted_channel_layout, int wanted_sample_rate, struct AudioParams *audio_hw_params));
+
+/**
+ *
+ */
 int audio_device_open(AudioDevice *device,
                       void *opaque,
                       AVChannelLayout *wanted_channel_layout,
                       int wanted_sample_rate,
                       struct AudioParams *audio_hw_params);
+
+/**
+ *
+ */
 int audio_device_open_sdl(AudioDevice *device,
                           void *opaque,
                           AVChannelLayout *wanted_channel_layout,
                           int wanted_sample_rate,
                           SDL_AudioCallback callback,
                           struct AudioParams *audio_hw_params);
+
+/**
+ *
+ */
 void audio_device_pause(AudioDevice *device, int pause_on);
+
+/**
+ *
+ */
 void audio_device_close(AudioDevice *device);
 
 #ifdef __cplusplus

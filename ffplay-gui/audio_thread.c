@@ -7,6 +7,7 @@
 #include <libavutil/samplefmt.h>
 
 #include "filter.h"
+#include "packet_queue.h"
 #include "audio_thread.h"
 
 static int cmp_audio_fmts(enum AVSampleFormat fmt1, int64_t channel_count1,

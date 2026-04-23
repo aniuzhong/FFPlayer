@@ -1,13 +1,14 @@
-#include "av_sync.h"
-
 #include <math.h>
 
+#include <libavutil/common.h>
+#include <libavutil/error.h>
+#include <libavutil/log.h>
+#include <libavutil/mathematics.h>
+#include <libavutil/time.h>
+
+#include "av_sync.h"
 #include "clock.h"
-#include "libavutil/common.h"
-#include "libavutil/error.h"
-#include "libavutil/log.h"
-#include "libavutil/mathematics.h"
-#include "libavutil/time.h"
+#include "packet_queue.h"
 
 /* Context binding */
 void av_sync_bind(AvSync *sync, Clock *audclk, Clock *vidclk, Clock *extclk,

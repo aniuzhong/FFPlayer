@@ -9,6 +9,7 @@
 
 #include "av_sync.h"
 #include "clock.h"
+#include "packet_queue.h"
 #include "stream.h"
 #include "video_renderer.h"
 
