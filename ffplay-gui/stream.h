@@ -25,7 +25,7 @@ VideoState *stream_open(const char *filename,
                         VideoRenderer *video_renderer,
                         void (*frame_size_changed_cb)(VideoState *is, int width, int height, AVRational sar));
 int stream_has_enough_packets(AVStream *st, int stream_id, PacketQueue *queue);
-int is_realtime(AVFormatContext *s);
+
 int stream_component_open(VideoState *is, int stream_index);
 void stream_component_close(VideoState *is, int stream_index);
 void stream_close(VideoState *is);

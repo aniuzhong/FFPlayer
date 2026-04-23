@@ -292,20 +292,7 @@ int stream_has_enough_packets(AVStream *st, int stream_id, PacketQueue *queue)
            (!duration || av_q2d(st->time_base) * duration > 1.0);
 }
 
-int is_realtime(AVFormatContext *s)
-{
-    if (!strcmp(s->iformat->name, "rtp")
-        || !strcmp(s->iformat->name, "rtsp")
-        || !strcmp(s->iformat->name, "sdp")) {
-        return 1;
-    }
 
-    if (s->pb && (!strncmp(s->url, "rtp:", 4)
-        || !strncmp(s->url, "udp:", 4))) {
-        return 1;
-    }
-    return 0;
-}
 
 int stream_component_open(VideoState *is, int stream_index)
 {

@@ -104,6 +104,22 @@ int demuxer_is_realtime(const Demuxer *demuxer)
     return demuxer->realtime;
 }
 
+int is_realtime(AVFormatContext *s)
+{
+    if (!strcmp(s->iformat->name, "rtp")
+        || !strcmp(s->iformat->name, "rtsp")
+        || !strcmp(s->iformat->name, "sdp")) {
+        return 1;
+    }
+
+    if (s->pb && (!strncmp(s->url, "rtp:", 4)
+        || !strncmp(s->url, "udp:", 4))) {
+        return 1;
+    }
+    return 0;
+}
+
+
 int demuxer_is_eof(const Demuxer *demuxer)
 {
     if (!demuxer)
