@@ -25,6 +25,10 @@ typedef struct Demuxer {
 
 int demuxer_init(Demuxer *demuxer, const char *input_url);
 void demuxer_destroy(Demuxer *demuxer);
+int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg);
+void demuxer_stop(Demuxer *demuxer);
+void demuxer_notify_continue_read(Demuxer *demuxer);
+
 void demuxer_request_abort(Demuxer *demuxer);
 int demuxer_is_aborted(const Demuxer *demuxer);
 int demuxer_get_seek_mode(const Demuxer *demuxer);

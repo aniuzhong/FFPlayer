@@ -522,8 +522,6 @@ void stream_close(VideoState *is)
         frame_queue_free(&is->sampq);
     if (frame_queue_is_initialized(is->subpq))
         frame_queue_free(&is->subpq);
-    if (is->demuxer.continue_read_thread)
-        SDL_DestroyCond(is->demuxer.continue_read_thread);
     sws_freeContext(is->video_renderer->sub_convert_ctx);
     is->video_renderer->sub_convert_ctx = NULL;
     if (is->video_renderer->vis_texture)

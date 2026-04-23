@@ -18,6 +18,10 @@ int demuxer_init(Demuxer *demuxer, const char *input_url)
     demuxer->input_url = av_strdup(input_url);
     if (!demuxer->input_url)
         return AVERROR(ENOMEM);
+    if (!(demuxer->continue_read_thread = SDL_CreateCond())) {
+        av_freep(&demuxer->input_url);
+        return AVERROR(ENOMEM);
+    }
     return 0;
 }
 
@@ -27,11 +31,42 @@ void demuxer_destroy(Demuxer *demuxer)
         return;
     avformat_close_input(&demuxer->ic);
     av_freep(&demuxer->input_url);
+    if (demuxer->continue_read_thread) {
+        SDL_DestroyCond(demuxer->continue_read_thread);
+        demuxer->continue_read_thread = NULL;
+    }
     demuxer->seek_mode = -1;
     demuxer->abort_request = 0;
     demuxer->realtime = 0;
     demuxer->eof = 0;
     demuxer->max_frame_duration = 0.0;
+}
+
+int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
+{
+    if (!demuxer || !read_thread_fn)
+        return AVERROR(EINVAL);
+    demuxer->read_tid = SDL_CreateThread(read_thread_fn, "read_thread", arg);
+    if (!demuxer->read_tid)
+        return AVERROR(ENOMEM);
+    return 0;
+}
+
+void demuxer_stop(Demuxer *demuxer)
+{
+    if (!demuxer)
+        return;
+    if (demuxer->read_tid) {
+        SDL_WaitThread(demuxer->read_tid, NULL);
+        demuxer->read_tid = NULL;
+    }
+}
+
+void demuxer_notify_continue_read(Demuxer *demuxer)
+{
+    if (demuxer && demuxer->continue_read_thread) {
+        SDL_CondSignal(demuxer->continue_read_thread);
+    }
 }
 
 void demuxer_request_abort(Demuxer *demuxer)
