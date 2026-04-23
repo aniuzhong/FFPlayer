@@ -319,10 +319,6 @@ int video_renderer_open(VideoRenderer *vr, VideoState *is)
     h = is->height > 0 ? is->height : vr->default_height;
 
     SDL_SetWindowSize(vr->window, w, h);
-    SDL_SetWindowPosition(vr->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
-    if (*vr->is_full_screen)
-        SDL_SetWindowFullscreen(vr->window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-    SDL_ShowWindow(vr->window);
 
     is->width  = w;
     is->height = h;
@@ -331,8 +327,11 @@ int video_renderer_open(VideoRenderer *vr, VideoState *is)
 
 void video_renderer_display(VideoRenderer *vr, VideoState *is)
 {
-    if (!is->width)
+    if (!is->width) {
         video_renderer_open(vr, is);
+        if (is->on_video_open)
+            is->on_video_open(is);
+    }
 
     SDL_SetRenderDrawColor(vr->renderer, 0, 0, 0, 255);
     SDL_RenderClear(vr->renderer);

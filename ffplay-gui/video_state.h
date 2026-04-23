@@ -94,6 +94,7 @@ typedef struct VideoState {
     Demuxer *demuxer;
     AudioDevice *audio_device;
     VideoRenderer *video_renderer;
+    void (*on_video_open)(struct VideoState *is);
     void (*on_frame_size_changed)(struct VideoState *is, int width, int height, AVRational sar);
     void (*on_step_frame)(struct VideoState *is);
 

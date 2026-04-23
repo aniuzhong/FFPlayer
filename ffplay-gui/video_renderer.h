@@ -23,7 +23,6 @@ typedef struct VideoRenderer {
     SDL_RendererInfo renderer_info;
     int default_width;
     int default_height;
-    int *is_full_screen;
     
     // Rendering textures (moved from VideoState)
     SDL_Texture *vid_texture;

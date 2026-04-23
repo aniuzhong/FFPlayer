@@ -208,6 +208,14 @@ void stream_seek_relative(VideoState *is, double incr_seconds)
     }
 }
 
+static void stream_on_video_open(VideoState *is)
+{
+    if (!is || !is->video_renderer)
+        return;
+    SDL_SetWindowPosition(is->video_renderer->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    SDL_ShowWindow(is->video_renderer->window);
+}
+
 static void stream_on_frame_size_changed(VideoState *is, int width, int height, AVRational sar)
 {
     if (!is || !is->video_renderer)
@@ -238,6 +246,7 @@ VideoState *stream_open(const char *filename,
     is->xleft   = 0;
     is->audio_device = audio_device;
     is->video_renderer = video_renderer;
+    is->on_video_open = stream_on_video_open;
     is->on_frame_size_changed = frame_size_changed_cb ? frame_size_changed_cb : stream_on_frame_size_changed;
     is->on_step_frame = stream_step;
 
