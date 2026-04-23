@@ -5,6 +5,7 @@
 #include <libavutil/time.h>
 #include <libavfilter/buffersink.h>
 
+#include "audio_device.h"
 #include "packet_queue.h"
 #include "clock.h"
 #include "av_sync.h"
@@ -205,6 +206,59 @@ void stream_request_refresh(VideoState *is)
     is->force_refresh = 1;
 }
 
+void stream_display(VideoState *is, VideoRenderer *vr)
+{
+    if (!is || !vr)
+        return;
+
+    if (!is->width) {
+        video_renderer_open(vr, &is->width, &is->height);
+        if (is->on_video_open)
+            is->on_video_open(is);
+    }
+
+    video_renderer_clear(vr);
+    if (is->audio_st && is->show_mode != SHOW_MODE_VIDEO)
+        audio_visualizer_render(is->audio_visualizer, vr->renderer, is->xleft, is->ytop, is->width, is->height);
+    else if (is->video_st) {
+        Frame *vp = frame_queue_peek_last(is->pictq);
+        Frame *sp = (is->subtitle_st && frame_queue_nb_remaining(is->subpq) > 0) ? frame_queue_peek(is->subpq) : NULL;
+        video_renderer_draw_video(vr, vp, sp, is->xleft, is->ytop, is->width, is->height);
+    }
+}
+
+/* ── Accessors ────────────────────────────────── */
+
+Demuxer *stream_get_demuxer(const VideoState *is)
+{
+    return is ? is->demuxer : NULL;
+}
+
+int stream_is_paused(const VideoState *is)
+{
+    return is ? is->paused : 1;
+}
+
+int stream_get_volume(const VideoState *is)
+{
+    if (!is || !is->audio_pipeline)
+        return 0;
+    return is->audio_pipeline->audio_volume;
+}
+
+int stream_needs_refresh(const VideoState *is)
+{
+    if (!is)
+        return 0;
+    return is->show_mode != SHOW_MODE_NONE &&
+           (!is->paused || is->force_refresh);
+}
+
+int stream_is_video_open(const VideoState *is)
+{
+    return is && is->width > 0;
+}
+
 void stream_handle_window_size_changed(VideoState *is, int width, int height)
 {
     if (!is)
@@ -354,6 +408,7 @@ VideoState *stream_open(const char *filename,
     is->ytop    = 0;
     is->xleft   = 0;
     is->audio_device = audio_device;
+    audio_device_set_open_cb(audio_device, audio_pipeline_open);
     is->video_renderer = video_renderer;
     is->on_video_open = stream_on_video_open;
     is->on_frame_size_changed = frame_size_changed_cb ? frame_size_changed_cb : stream_on_frame_size_changed;

@@ -4,9 +4,6 @@
 #include <libavutil/common.h>
 #include <libavformat/avio.h>
 
-#include "audio_pipeline.h"
-#include "audio_visualizer.h"
-#include "frame_queue.h"
 #include "demuxer.h"
 #include "stream.h"
 #include "video_renderer.h"
@@ -31,7 +28,6 @@ FFPlayer *ffplayer_create(AudioDevice *audio_device, VideoRenderer *video_render
     p->audio_device  = audio_device;
     p->video_renderer = video_renderer;
     p->is = NULL;
-    audio_device_set_open_cb(audio_device, audio_pipeline_open);
     return p;
 }
 
@@ -83,7 +79,7 @@ int ffplayer_is_paused(const FFPlayer *p)
 {
     if (!p || !p->is)
         return 1;
-    return p->is->paused;
+    return stream_is_paused(p->is);
 }
 
 void ffplayer_step_frame(FFPlayer *p)
@@ -109,11 +105,11 @@ void ffplayer_seek_to_ratio(FFPlayer *p, float ratio)
     AVFormatContext *ic;
     if (!p || !p->is)
         return;
-    ic = demuxer_get_ic(p->is->demuxer);
+    ic = demuxer_get_ic(stream_get_demuxer(p->is));
     if (!ic)
         return;
     ratio = av_clipf(ratio, 0.0f, 1.0f);
-    if (demuxer_get_seek_mode(p->is->demuxer) || ic->duration <= 0) {
+    if (demuxer_get_seek_mode(stream_get_demuxer(p->is)) || ic->duration <= 0) {
         if (!ic->pb)
             return;
         size = avio_size(ic->pb);
@@ -146,9 +142,9 @@ void ffplayer_set_volume(FFPlayer *p, int volume)
 
 int ffplayer_get_volume(const FFPlayer *p)
 {
-    if (!p || !p->is || !p->is->audio_pipeline)
+    if (!p || !p->is)
         return 0;
-    return p->is->audio_pipeline->audio_volume;
+    return stream_get_volume(p->is);
 }
 
 void ffplayer_adjust_volume_step(FFPlayer *p, int sign, double step)
@@ -217,7 +213,7 @@ double ffplayer_get_position(const FFPlayer *p)
     pos = stream_get_master_clock(p->is);
     if (isnan(pos))
         return 0.0;
-    ic = demuxer_get_ic(p->is->demuxer);
+    ic = demuxer_get_ic(stream_get_demuxer(p->is));
     if (ic && ic->start_time != AV_NOPTS_VALUE)
         pos -= ic->start_time / (double)AV_TIME_BASE;
     return pos > 0.0 ? pos : 0.0;
@@ -228,7 +224,7 @@ double ffplayer_get_duration(const FFPlayer *p)
     AVFormatContext *ic;
     if (!p || !p->is)
         return -1.0;
-    ic = demuxer_get_ic(p->is->demuxer);
+    ic = demuxer_get_ic(stream_get_demuxer(p->is));
     if (!ic || ic->duration <= 0)
         return -1.0;
     return ic->duration / (double)AV_TIME_BASE;
@@ -238,7 +234,7 @@ int ffplayer_is_eof(const FFPlayer *p)
 {
     if (!p || !p->is)
         return 0;
-    return demuxer_is_eof(p->is->demuxer);
+    return demuxer_is_eof(stream_get_demuxer(p->is));
 }
 
 int ffplayer_has_chapters(const FFPlayer *p)
@@ -246,7 +242,7 @@ int ffplayer_has_chapters(const FFPlayer *p)
     AVFormatContext *ic;
     if (!p || !p->is)
         return 0;
-    ic = demuxer_get_ic(p->is->demuxer);
+    ic = demuxer_get_ic(stream_get_demuxer(p->is));
     return ic && ic->nb_chapters > 1;
 }
 
@@ -254,7 +250,7 @@ const char *ffplayer_get_media_title(const FFPlayer *p)
 {
     if (!p || !p->is)
         return NULL;
-    return demuxer_get_input_name(p->is->demuxer);
+    return demuxer_get_input_name(stream_get_demuxer(p->is));
 }
 
 int ffplayer_can_seek(const FFPlayer *p)
@@ -262,7 +258,7 @@ int ffplayer_can_seek(const FFPlayer *p)
     AVFormatContext *ic;
     if (!p || !p->is)
         return 0;
-    ic = demuxer_get_ic(p->is->demuxer);
+    ic = demuxer_get_ic(stream_get_demuxer(p->is));
     if (!ic)
         return 0;
     if (ic->duration > 0)
@@ -276,7 +272,7 @@ float ffplayer_get_byte_progress(const FFPlayer *p)
     int64_t size, pos;
     if (!p || !p->is)
         return -1.0f;
-    ic = demuxer_get_ic(p->is->demuxer);
+    ic = demuxer_get_ic(stream_get_demuxer(p->is));
     if (!ic || !ic->pb)
         return -1.0f;
     size = avio_size(ic->pb);
@@ -292,8 +288,7 @@ int ffplayer_needs_refresh(const FFPlayer *p)
 {
     if (!p || !p->is)
         return 0;
-    return p->is->show_mode != SHOW_MODE_NONE &&
-           (!p->is->paused || p->is->force_refresh);
+    return stream_needs_refresh(p->is);
 }
 
 void ffplayer_refresh(FFPlayer *p, double *remaining_time)
@@ -305,27 +300,9 @@ void ffplayer_refresh(FFPlayer *p, double *remaining_time)
 
 void ffplayer_display(FFPlayer *p)
 {
-    VideoState *is;
-    VideoRenderer *vr;
     if (!p || !p->is)
         return;
-    is = p->is;
-    vr = p->video_renderer;
-
-    if (!is->width) {
-        video_renderer_open(vr, &is->width, &is->height);
-        if (is->on_video_open)
-            is->on_video_open(is);
-    }
-
-    video_renderer_clear(vr);
-    if (is->audio_st && is->show_mode != SHOW_MODE_VIDEO)
-        audio_visualizer_render(is->audio_visualizer, vr->renderer, is->xleft, is->ytop, is->width, is->height);
-    else if (is->video_st) {
-        Frame *vp = frame_queue_peek_last(is->pictq);
-        Frame *sp = (is->subtitle_st && frame_queue_nb_remaining(is->subpq) > 0) ? frame_queue_peek(is->subpq) : NULL;
-        video_renderer_draw_video(vr, vp, sp, is->xleft, is->ytop, is->width, is->height);
-    }
+    stream_display(p->is, p->video_renderer);
 }
 
 /* ── Window events ────────────────────────────── */
@@ -348,5 +325,5 @@ int ffplayer_is_renderer_open(const FFPlayer *p)
 {
     if (!p || !p->is)
         return 0;
-    return p->is->width > 0;
+    return stream_is_video_open(p->is);
 }
