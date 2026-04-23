@@ -24,7 +24,7 @@ static int decode_interrupt_cb(void *ctx)
 /* find and open the best streams (audio, video, subtitle) */
 static int find_stream_components(VideoState *is)
 {
-    AVFormatContext *ic = is->demuxer.ic;
+    AVFormatContext *ic = demuxer_get_ic(is->demuxer);
     int st_index[AVMEDIA_TYPE_NB];
     int i, ret = -1;
 
@@ -83,7 +83,7 @@ static int find_stream_components(VideoState *is)
 
     if (is->video_stream < 0 && is->audio_stream < 0) {
         av_log(NULL, AV_LOG_FATAL, "Failed to open file '%s' or configure filtergraph\n",
-               is->demuxer.input_url);
+               demuxer_get_input_name(is->demuxer));
         return -1;
     }
 
@@ -96,7 +96,7 @@ static void handle_pause_resume(VideoState *is, AVFormatContext *ic)
     if (is->paused != is->last_paused) {
         is->last_paused = is->paused;
         if (is->paused)
-            is->demuxer.read_pause_return = av_read_pause(ic);
+            demuxer_set_read_pause_return(is->demuxer, av_read_pause(ic));
         else
             av_read_play(ic);
     }
@@ -105,7 +105,7 @@ static void handle_pause_resume(VideoState *is, AVFormatContext *ic)
 /* handle seek request from user */
 static int handle_seek_request(VideoState *is, AVFormatContext *ic)
 {
-    Demuxer *demuxer = &is->demuxer;
+    Demuxer *demuxer = is->demuxer;
     
     if (!is->seek_req)
         return 0;
@@ -114,9 +114,9 @@ static int handle_seek_request(VideoState *is, AVFormatContext *ic)
     int64_t seek_min    = is->seek_rel > 0 ? seek_target - is->seek_rel + 2: INT64_MIN;
     int64_t seek_max    = is->seek_rel < 0 ? seek_target - is->seek_rel - 2: INT64_MAX;
 
-    int ret = avformat_seek_file(demuxer->ic, -1, seek_min, seek_target, seek_max, is->seek_flags);
+    int ret = avformat_seek_file(demuxer_get_ic(demuxer), -1, seek_min, seek_target, seek_max, is->seek_flags);
     if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "%s: error while seeking\n", demuxer->ic->url);
+        av_log(NULL, AV_LOG_ERROR, "%s: error while seeking\n", demuxer_get_input_name(demuxer));
     } else {
         if (is->audio_stream >= 0)
             packet_queue_flush(is->audioq);
@@ -127,7 +127,7 @@ static int handle_seek_request(VideoState *is, AVFormatContext *ic)
         av_sync_seek_reset_extclk(&is->av_sync, !!(is->seek_flags & AVSEEK_FLAG_BYTE), seek_target);
     }
     is->seek_req = 0;
-    demuxer->queue_attachments_req = 1;
+    demuxer_set_queue_attachments_req(demuxer, 1);
     demuxer_set_eof(demuxer, 0);
     if (is->paused && is->on_step_frame)
         is->on_step_frame(is);
@@ -138,7 +138,7 @@ static int handle_seek_request(VideoState *is, AVFormatContext *ic)
 /* queue attached picture packets (e.g., album art) */
 static int handle_queue_attachments(VideoState *is, AVPacket *pkt)
 {
-    if (!is->demuxer.queue_attachments_req)
+    if (!demuxer_get_queue_attachments_req(is->demuxer))
         return 0;
     
     if (is->video_st && is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC) {
@@ -148,7 +148,7 @@ static int handle_queue_attachments(VideoState *is, AVPacket *pkt)
         packet_queue_put(is->videoq, pkt);
         packet_queue_put_nullpacket(is->videoq, pkt, is->video_stream);
     }
-    is->demuxer.queue_attachments_req = 0;
+    demuxer_set_queue_attachments_req(is->demuxer, 0);
     return 0;
 }
 
@@ -171,7 +171,7 @@ static void route_packet_to_queue(VideoState *is, AVPacket *pkt)
 int read_thread(void *arg)
 {
     VideoState *is = (VideoState *)arg;
-    Demuxer *demuxer = &is->demuxer;
+    Demuxer *demuxer = is->demuxer;
     AVFormatContext *ic = NULL;
     int err, ret;
     AVPacket *pkt = NULL;
@@ -202,21 +202,21 @@ int read_thread(void *arg)
     ic->interrupt_callback.opaque = demuxer;
     if (!av_dict_get(open_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
         av_dict_set(&open_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
-    err = avformat_open_input(&ic, demuxer->input_url, NULL, &open_opts);
+    err = avformat_open_input(&ic, demuxer_get_input_name(demuxer), NULL, &open_opts);
     av_dict_free(&open_opts);
     open_opts = NULL;
     if (err < 0) {
-        print_error(demuxer->input_url, err);
+        print_error(demuxer_get_input_name(demuxer), err);
         ret = -1;
         goto fail;
     }
-    demuxer->ic = ic;
+    demuxer_set_ic(demuxer, ic);
 
     err = avformat_find_stream_info(ic, NULL);
 
     if (err < 0) {
         av_log(NULL, AV_LOG_WARNING,
-               "%s: could not find codec parameters\n", demuxer->input_url);
+               "%s: could not find codec parameters\n", demuxer_get_input_name(demuxer));
         ret = -1;
         goto fail;
     }
@@ -224,10 +224,10 @@ int read_thread(void *arg)
     if (ic->pb)
         ic->pb->eof_reached = 0;
 
-    if (demuxer->seek_mode < 0)
-        demuxer->seek_mode = !(ic->iformat->flags & AVFMT_NO_BYTE_SEEK) &&
-                             !!(ic->iformat->flags & AVFMT_TS_DISCONT) &&
-                             strcmp("ogg", ic->iformat->name);
+    if (demuxer_get_seek_mode(demuxer) < 0)
+        demuxer_set_seek_mode(demuxer, !(ic->iformat->flags & AVFMT_NO_BYTE_SEEK) &&
+                                       !!(ic->iformat->flags & AVFMT_TS_DISCONT) &&
+                                       strcmp("ogg", ic->iformat->name));
 
     demuxer_set_max_frame_duration(demuxer,
                                    (ic->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0);
@@ -249,7 +249,7 @@ int read_thread(void *arg)
 #if CONFIG_RTSP_DEMUXER || CONFIG_MMSH_PROTOCOL
         if (is->paused &&
                 (!strcmp(ic->iformat->name, "rtsp") ||
-                 (ic->pb && demuxer->input_url && !strncmp(demuxer->input_url, "mmsh:", 5)))) {
+                 (ic->pb && demuxer_get_input_name(demuxer) && !strncmp(demuxer_get_input_name(demuxer), "mmsh:", 5)))) {
             SDL_Delay(10);
             continue;
         }
@@ -270,7 +270,7 @@ int read_thread(void *arg)
                 stream_has_enough_packets(is->video_st, is->video_stream, is->videoq) &&
                 stream_has_enough_packets(is->subtitle_st, is->subtitle_stream, is->subtitleq)))) {
             SDL_LockMutex(wait_mutex);
-            SDL_CondWaitTimeout(demuxer->continue_read_thread, wait_mutex, 10);
+            SDL_CondWaitTimeout(demuxer_get_continue_read_thread(demuxer), wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
             continue;
         }
@@ -290,7 +290,7 @@ int read_thread(void *arg)
             if (ic->pb && ic->pb->error)
                 break;
             SDL_LockMutex(wait_mutex);
-            SDL_CondWaitTimeout(demuxer->continue_read_thread, wait_mutex, 10);
+            SDL_CondWaitTimeout(demuxer_get_continue_read_thread(demuxer), wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
             continue;
         } else {
@@ -304,7 +304,7 @@ int read_thread(void *arg)
 
     ret = 0;
 fail:
-    if (ic && !demuxer->ic)
+    if (ic && !demuxer_get_ic(demuxer))
         avformat_close_input(&ic);
 
     av_packet_free(&pkt);

@@ -3,45 +3,77 @@
 
 #include <libavutil/error.h>
 #include <libavutil/mem.h>
+#include <SDL_thread.h>
 
 #include "demuxer.h"
 
-int demuxer_init(Demuxer *demuxer, const char *input_url)
+/* Opaque structure definition - hidden from external code */
+typedef struct Demuxer {
+    AVFormatContext *ic;
+    int              seek_mode;
+    int              abort_request;
+    int              realtime;
+    int              eof;
+    double           max_frame_duration;
+    char            *input_url;
+    
+    SDL_Thread      *read_tid;
+    SDL_cond        *continue_read_thread;
+    int              queue_attachments_req;
+    int              read_pause_return;
+} Demuxer;
+
+/**
+ * Create and initialize a Demuxer instance.
+ */
+Demuxer *demuxer_create(const char *input_url)
 {
-    if (!demuxer || !input_url)
-        return AVERROR(EINVAL);
-    memset(demuxer, 0, sizeof(*demuxer));
+    if (!input_url)
+        return NULL;
+
+    Demuxer *demuxer = av_mallocz(sizeof(Demuxer));
+    if (!demuxer)
+        return NULL;
+
     demuxer->seek_mode = -1;
     demuxer->realtime = 0;
     demuxer->eof = 0;
     demuxer->max_frame_duration = 0.0;
     demuxer->input_url = av_strdup(input_url);
-    if (!demuxer->input_url)
-        return AVERROR(ENOMEM);
+    if (!demuxer->input_url) {
+        av_free(demuxer);
+        return NULL;
+    }
     if (!(demuxer->continue_read_thread = SDL_CreateCond())) {
         av_freep(&demuxer->input_url);
-        return AVERROR(ENOMEM);
+        av_free(demuxer);
+        return NULL;
     }
-    return 0;
+    return demuxer;
 }
 
-void demuxer_destroy(Demuxer *demuxer)
+/**
+ * Destroy and free a Demuxer instance.
+ */
+void demuxer_free(Demuxer **demuxer)
 {
-    if (!demuxer)
+    if (!demuxer || !*demuxer)
         return;
-    avformat_close_input(&demuxer->ic);
-    av_freep(&demuxer->input_url);
-    if (demuxer->continue_read_thread) {
-        SDL_DestroyCond(demuxer->continue_read_thread);
-        demuxer->continue_read_thread = NULL;
+
+    Demuxer *d = *demuxer;
+    avformat_close_input(&d->ic);
+    av_freep(&d->input_url);
+    if (d->continue_read_thread) {
+        SDL_DestroyCond(d->continue_read_thread);
+        d->continue_read_thread = NULL;
     }
-    demuxer->seek_mode = -1;
-    demuxer->abort_request = 0;
-    demuxer->realtime = 0;
-    demuxer->eof = 0;
-    demuxer->max_frame_duration = 0.0;
+    av_free(d);
+    *demuxer = NULL;
 }
 
+/**
+ * Start the read thread.
+ */
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
 {
     if (!demuxer || !read_thread_fn)
@@ -52,6 +84,9 @@ int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
     return 0;
 }
 
+/**
+ * Stop the read thread.
+ */
 void demuxer_stop(Demuxer *demuxer)
 {
     if (!demuxer)
@@ -62,6 +97,9 @@ void demuxer_stop(Demuxer *demuxer)
     }
 }
 
+/**
+ * Signal the read thread to continue.
+ */
 void demuxer_notify_continue_read(Demuxer *demuxer)
 {
     if (demuxer && demuxer->continue_read_thread) {
@@ -69,6 +107,9 @@ void demuxer_notify_continue_read(Demuxer *demuxer)
     }
 }
 
+/**
+ * Request abort of the demuxer.
+ */
 void demuxer_request_abort(Demuxer *demuxer)
 {
     if (!demuxer)
@@ -76,6 +117,9 @@ void demuxer_request_abort(Demuxer *demuxer)
     demuxer->abort_request = 1;
 }
 
+/**
+ * Check if abort is requested.
+ */
 int demuxer_is_aborted(const Demuxer *demuxer)
 {
     if (!demuxer)
@@ -83,6 +127,9 @@ int demuxer_is_aborted(const Demuxer *demuxer)
     return demuxer->abort_request;
 }
 
+/**
+ * Get seek mode.
+ */
 int demuxer_get_seek_mode(const Demuxer *demuxer)
 {
     if (!demuxer || demuxer->seek_mode < 0)
@@ -90,6 +137,19 @@ int demuxer_get_seek_mode(const Demuxer *demuxer)
     return demuxer->seek_mode;
 }
 
+/**
+ * Set seek mode.
+ */
+void demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode)
+{
+    if (!demuxer)
+        return;
+    demuxer->seek_mode = seek_mode;
+}
+
+/**
+ * Get input URL.
+ */
 const char *demuxer_get_input_name(const Demuxer *demuxer)
 {
     if (!demuxer || !demuxer->input_url)
@@ -97,6 +157,29 @@ const char *demuxer_get_input_name(const Demuxer *demuxer)
     return demuxer->input_url;
 }
 
+/**
+ * Get AVFormatContext.
+ */
+AVFormatContext *demuxer_get_ic(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return NULL;
+    return demuxer->ic;
+}
+
+/**
+ * Set AVFormatContext.
+ */
+void demuxer_set_ic(Demuxer *demuxer, AVFormatContext *ic)
+{
+    if (!demuxer)
+        return;
+    demuxer->ic = ic;
+}
+
+/**
+ * Check if realtime format.
+ */
 int demuxer_is_realtime(const Demuxer *demuxer)
 {
     if (!demuxer)
@@ -104,6 +187,119 @@ int demuxer_is_realtime(const Demuxer *demuxer)
     return demuxer->realtime;
 }
 
+/**
+ * Set realtime flag.
+ */
+void demuxer_set_realtime(Demuxer *demuxer, int realtime)
+{
+    if (!demuxer)
+        return;
+    demuxer->realtime = realtime;
+}
+
+/**
+ * Check if EOF reached.
+ */
+int demuxer_is_eof(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0;
+    return demuxer->eof;
+}
+
+/**
+ * Set EOF flag.
+ */
+void demuxer_set_eof(Demuxer *demuxer, int eof)
+{
+    if (!demuxer)
+        return;
+    demuxer->eof = eof;
+}
+
+/**
+ * Get max frame duration.
+ */
+double demuxer_get_max_frame_duration(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0.0;
+    return demuxer->max_frame_duration;
+}
+
+/**
+ * Set max frame duration.
+ */
+void demuxer_set_max_frame_duration(Demuxer *demuxer, double max_frame_duration)
+{
+    if (!demuxer)
+        return;
+    demuxer->max_frame_duration = max_frame_duration;
+}
+
+/**
+ * Get pointer to max frame duration (for av_sync_bind).
+ */
+double *demuxer_get_max_frame_duration_ptr(Demuxer *demuxer)
+{
+    if (!demuxer)
+        return NULL;
+    return &demuxer->max_frame_duration;
+}
+
+/**
+ * Get continue read thread condition.
+ */
+SDL_cond *demuxer_get_continue_read_thread(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return NULL;
+    return demuxer->continue_read_thread;
+}
+
+/**
+ * Get queue attachments request flag.
+ */
+int demuxer_get_queue_attachments_req(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0;
+    return demuxer->queue_attachments_req;
+}
+
+/**
+ * Set queue attachments request flag.
+ */
+void demuxer_set_queue_attachments_req(Demuxer *demuxer, int req)
+{
+    if (!demuxer)
+        return;
+    demuxer->queue_attachments_req = req;
+}
+
+/**
+ * Get read pause return value.
+ */
+int demuxer_get_read_pause_return(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0;
+    return demuxer->read_pause_return;
+}
+
+/**
+ * Set read pause return value.
+ */
+void demuxer_set_read_pause_return(Demuxer *demuxer, int ret)
+{
+    if (!demuxer)
+        return;
+    demuxer->read_pause_return = ret;
+}
+
+/**
+ * Check if format is realtime.
+ */
 int is_realtime(AVFormatContext *s)
 {
     if (!strcmp(s->iformat->name, "rtp")
@@ -117,41 +313,5 @@ int is_realtime(AVFormatContext *s)
         return 1;
     }
     return 0;
-}
-
-
-int demuxer_is_eof(const Demuxer *demuxer)
-{
-    if (!demuxer)
-        return 0;
-    return demuxer->eof;
-}
-
-double demuxer_get_max_frame_duration(const Demuxer *demuxer)
-{
-    if (!demuxer)
-        return 0.0;
-    return demuxer->max_frame_duration;
-}
-
-void demuxer_set_realtime(Demuxer *demuxer, int realtime)
-{
-    if (!demuxer)
-        return;
-    demuxer->realtime = realtime;
-}
-
-void demuxer_set_eof(Demuxer *demuxer, int eof)
-{
-    if (!demuxer)
-        return;
-    demuxer->eof = eof;
-}
-
-void demuxer_set_max_frame_duration(Demuxer *demuxer, double max_frame_duration)
-{
-    if (!demuxer)
-        return;
-    demuxer->max_frame_duration = max_frame_duration;
 }
 

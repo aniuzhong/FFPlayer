@@ -9,6 +9,7 @@
 
 #include "av_sync.h"
 #include "clock.h"
+#include "demuxer.h"
 #include "packet_queue.h"
 #include "stream.h"
 #include "video_renderer.h"
@@ -503,7 +504,7 @@ void video_renderer_refresh(VideoRenderer *vr, VideoState *is, double *remaining
     Frame *sp, *sp2;
 
     if (!is->paused && av_sync_is_external_clock_master(&is->av_sync) &&
-        demuxer_is_realtime(&is->demuxer))
+        demuxer_is_realtime(is->demuxer))
         check_external_clock_speed(&is->av_sync);
 
     if (is->show_mode != SHOW_MODE_VIDEO && is->audio_st) {

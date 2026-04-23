@@ -144,7 +144,7 @@ static void sigterm_handler(int sig)
 static const char *video_window_title(void *opaque, const char *fallback)
 {
     VideoState *is = (VideoState *)opaque;
-    const char *title = demuxer_get_input_name(&is->demuxer);
+    const char *title = demuxer_get_input_name(is->demuxer);
     return (title && title[0]) ? title : fallback;
 }
 
@@ -236,21 +236,25 @@ void Application::SeekToRatio(float ratio)
 {
     int64_t ts;
     int64_t size;
-    if (!stream_ || !stream_->demuxer.ic)
+    AVFormatContext *ic;
+    if (!stream_)
+        return;
+    ic = demuxer_get_ic(stream_->demuxer);
+    if (!ic)
         return;
     ratio = av_clipf(ratio, 0.0f, 1.0f);
-    if (demuxer_get_seek_mode(&stream_->demuxer) || stream_->demuxer.ic->duration <= 0) {
-        if (!stream_->demuxer.ic->pb)
+    if (demuxer_get_seek_mode(stream_->demuxer) || ic->duration <= 0) {
+        if (!ic->pb)
             return;
-        size = avio_size(stream_->demuxer.ic->pb);
+        size = avio_size(ic->pb);
         if (size <= 0)
             return;
         stream_seek(stream_, (int64_t)(size * ratio), 0, 1);
         return;
     }
-    ts = (int64_t)(ratio * stream_->demuxer.ic->duration);
-    if (stream_->demuxer.ic->start_time != AV_NOPTS_VALUE)
-        ts += stream_->demuxer.ic->start_time;
+    ts = (int64_t)(ratio * ic->duration);
+    if (ic->start_time != AV_NOPTS_VALUE)
+        ts += ic->start_time;
     stream_seek(stream_, ts, 0, 0);
 }
 
@@ -274,18 +278,19 @@ void Application::RenderImGui()
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 
-    if (stream_ && stream_->demuxer.ic) {
-        has_known_duration = stream_->demuxer.ic->duration > 0;
-        can_approx_seek = stream_->demuxer.ic->pb && avio_size(stream_->demuxer.ic->pb) > 0;
+    if (stream_ && demuxer_get_ic(stream_->demuxer)) {
+        AVFormatContext *ic = demuxer_get_ic(stream_->demuxer);
+        has_known_duration = ic->duration > 0;
+        can_approx_seek = ic->pb && avio_size(ic->pb) > 0;
         can_seek = has_known_duration || can_approx_seek;
 
         if (has_known_duration) {
-            duration_sec = stream_->demuxer.ic->duration / (double)AV_TIME_BASE;
+            duration_sec = ic->duration / (double)AV_TIME_BASE;
             current_sec = stream_get_master_clock(stream_);
             if (isnan(current_sec))
                 current_sec = 0.0;
-            if (stream_->demuxer.ic->start_time != AV_NOPTS_VALUE)
-                current_sec -= stream_->demuxer.ic->start_time / (double)AV_TIME_BASE;
+            if (ic->start_time != AV_NOPTS_VALUE)
+                current_sec -= ic->start_time / (double)AV_TIME_BASE;
             current_sec = FFMAX(0.0, FFMIN(current_sec, duration_sec));
             progress = duration_sec > 0.0 ? (float)(current_sec / duration_sec) : 0.0f;
 
@@ -294,7 +299,7 @@ void Application::RenderImGui()
              * decodable payload duration. At EOF, snap near-tail progress to 100%
              * so the thumb reaches the right edge instead of stopping around 4.x/5s.
              */
-            if (demuxer_is_eof(&stream_->demuxer) && progress > 0.90f)
+            if (demuxer_is_eof(stream_->demuxer) && progress > 0.90f)
                 progress = 1.0f;
 
             if (!isfinite(progress))
@@ -302,8 +307,8 @@ void Application::RenderImGui()
             using_stable_progress = true;
             time_text = FormatDuration(current_sec) + " / " + FormatDuration(duration_sec);
         } else if (can_approx_seek) {
-            int64_t size = avio_size(stream_->demuxer.ic->pb);
-            int64_t pos = avio_tell(stream_->demuxer.ic->pb);
+            int64_t size = avio_size(ic->pb);
+            int64_t pos = avio_tell(ic->pb);
             if (size > 0 && pos >= 0)
                 progress = av_clipf((float)pos / (float)size, 0.0f, 1.0f);
             time_text = "Unknown duration | Approx seek";
@@ -722,14 +727,14 @@ void Application::EventLoop()
                 stream_toggle_audio_display(stream_);
                 break;
             case SDLK_PAGEUP:
-                if (stream_->demuxer.ic->nb_chapters <= 1) {
+                if (!demuxer_get_ic(stream_->demuxer) || demuxer_get_ic(stream_->demuxer)->nb_chapters <= 1) {
                     incr = 600.0;
                     goto do_seek;
                 }
                 stream_seek_chapter(stream_, 1);
                 break;
             case SDLK_PAGEDOWN:
-                if (stream_->demuxer.ic->nb_chapters <= 1) {
+                if (!demuxer_get_ic(stream_->demuxer) || demuxer_get_ic(stream_->demuxer)->nb_chapters <= 1) {
                     incr = -600.0;
                     goto do_seek;
                 }

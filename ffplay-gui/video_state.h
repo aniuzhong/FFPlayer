@@ -130,7 +130,7 @@ typedef struct VideoState {
     AVFilterContext *in_audio_filter;
     AVFilterContext *out_audio_filter;
     AVFilterGraph *agraph;
-    Demuxer demuxer;
+    Demuxer *demuxer;
     AudioDevice *audio_device;
     VideoRenderer *video_renderer;
     void (*on_frame_size_changed)(struct VideoState *is, int width, int height, AVRational sar);
