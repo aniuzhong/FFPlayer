@@ -58,4 +58,8 @@ cmake --build build --config Release
 
 3. 解码器内部是否仍可用 Vulkan 由 -hwaccel 与 av_hwdevice_ctx_create 决定。
 
-## v0.1.2
+## **`v0.1.2`**
+
+该版本 ffplay-gui 的策略是**剥离命令行高级特性，但完全忠实保留核心播放引擎**（1:1 复刻）。
+
+- 进行了初步的模块化
