@@ -35,7 +35,7 @@ void video_renderer_set_default_window_size(VideoRenderer *vr, VideoState *is, i
 const SDL_RendererInfo *video_renderer_get_info(const VideoRenderer *vr);
 int video_renderer_open(VideoRenderer *vr, VideoState *is);
 void video_renderer_display(VideoRenderer *vr, VideoState *is);
-void video_renderer_refresh(VideoRenderer *vr, VideoState *is, double *remaining_time);
+void video_renderer_flush_sub_rect(VideoRenderer *vr, const SDL_Rect *rect);
 void video_renderer_present(VideoRenderer *vr);
 
 #ifdef __cplusplus

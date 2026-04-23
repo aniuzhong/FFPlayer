@@ -13,6 +13,7 @@ void stream_toggle_pause_and_clear_step(VideoState *is);
 void stream_toggle_mute(VideoState *is);
 void stream_toggle_audio_display(VideoState *is);
 void stream_set_volume(VideoState *is, int volume);
+void stream_refresh(VideoState *is, double *remaining_time);
 void stream_request_refresh(VideoState *is);
 void stream_handle_window_size_changed(VideoState *is, int width, int height);
 void stream_adjust_volume_step(VideoState *is, int sign, double step);

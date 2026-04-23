@@ -604,7 +604,7 @@ void Application::RefreshLoopWaitEvent(SDL_Event *event)
             av_usleep((int64_t)(remaining_time * 1000000.0));
         remaining_time = REFRESH_RATE;
         if (stream_ && stream_->show_mode != SHOW_MODE_NONE && (!stream_->paused || stream_->force_refresh))
-            video_renderer_refresh(stream_->video_renderer, stream_, &remaining_time);
+            stream_refresh(stream_, &remaining_time);
         if (stream_)
             video_renderer_display(stream_->video_renderer, stream_);
         else {

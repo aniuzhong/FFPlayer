@@ -89,6 +89,110 @@ void stream_set_volume(VideoState *is, int volume)
     is->audio_pipeline->audio_volume = av_clip(volume, 0, SDL_MIX_MAXVOLUME);
 }
 
+void stream_refresh(VideoState *is, double *remaining_time)
+{
+    double time;
+    Frame *sp, *sp2;
+    VideoRenderer *vr = is->video_renderer;
+
+    if (!is->paused && av_sync_is_external_clock_master(&is->av_sync) &&
+        demuxer_is_realtime(is->demuxer))
+        check_external_clock_speed(&is->av_sync);
+
+    if (is->show_mode != SHOW_MODE_VIDEO && is->audio_st && is->audio_visualizer) {
+        time = av_gettime_relative() / 1000000.0;
+        if (is->force_refresh || is->audio_visualizer->last_vis_time + is->audio_visualizer->rdftspeed < time) {
+            video_renderer_display(vr, is);
+            is->audio_visualizer->last_vis_time = time;
+        }
+        *remaining_time = FFMIN(*remaining_time, is->audio_visualizer->last_vis_time + is->audio_visualizer->rdftspeed - time);
+    }
+
+    if (is->video_st) {
+retry:
+        if (frame_queue_nb_remaining(is->pictq) == 0) {
+        } else {
+            double duration, delay;
+            Frame *vp, *lastvp;
+
+            lastvp = frame_queue_peek_last(is->pictq);
+            vp = frame_queue_peek(is->pictq);
+
+            if (vp->serial != packet_queue_get_serial(is->videoq)) {
+                frame_queue_next(is->pictq);
+                goto retry;
+            }
+
+            if (lastvp->serial != vp->serial)
+                is->frame_timer = av_gettime_relative() / 1000000.0;
+
+            if (is->paused)
+                goto display;
+
+            delay = av_sync_compute_frame_delay(&is->av_sync, lastvp, vp);
+
+            time= av_gettime_relative()/1000000.0;
+            if (time < is->frame_timer + delay) {
+                *remaining_time = FFMIN(is->frame_timer + delay - time, *remaining_time);
+                goto display;
+            }
+
+            is->frame_timer += delay;
+            if (av_sync_should_reset_frame_timer(delay, time, is->frame_timer))
+                is->frame_timer = time;
+
+            frame_queue_lock(is->pictq);
+            av_sync_update_video_pts_if_valid(&is->av_sync, vp->pts, vp->serial);
+            frame_queue_unlock(is->pictq);
+
+            if (frame_queue_nb_remaining(is->pictq) > 1) {
+                Frame *nextvp = frame_queue_peek_next(is->pictq);
+                duration = vp_duration(&is->av_sync, vp, nextvp);
+                if (av_sync_should_late_drop(&is->av_sync, is->step, time, is->frame_timer, duration)) {
+                    is->frame_drops_late++;
+                    frame_queue_next(is->pictq);
+                    goto retry;
+                }
+            }
+
+            if (is->subtitle_st) {
+                while (frame_queue_nb_remaining(is->subpq) > 0) {
+                    sp = frame_queue_peek(is->subpq);
+                    if (frame_queue_nb_remaining(is->subpq) > 1)
+                        sp2 = frame_queue_peek_next(is->subpq);
+                    else
+                        sp2 = NULL;
+
+                    if (sp->serial != packet_queue_get_serial(is->subtitleq)
+                            || (clock_get_pts(is->vidclk) > (sp->pts + ((float) sp->sub.end_display_time / 1000)))
+                            || (sp2 && clock_get_pts(is->vidclk) > (sp2->pts + ((float) sp2->sub.start_display_time / 1000)))) {
+                        if (sp->uploaded) {
+                            int i;
+                            for (i = 0; i < sp->sub.num_rects; i++) {
+                                AVSubtitleRect *sub_rect = sp->sub.rects[i];
+                                video_renderer_flush_sub_rect(vr, (SDL_Rect *)sub_rect);
+                            }
+                        }
+                        frame_queue_next(is->subpq);
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            frame_queue_next(is->pictq);
+            is->force_refresh = 1;
+
+            if (is->step && !is->paused)
+                stream_toggle_pause(is);
+        }
+display:
+        if (is->force_refresh && is->show_mode == SHOW_MODE_VIDEO && frame_queue_is_last_shown(is->pictq))
+            video_renderer_display(vr, is);
+    }
+    is->force_refresh = 0;
+}
+
 void stream_request_refresh(VideoState *is)
 {
     if (!is)
