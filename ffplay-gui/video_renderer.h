@@ -24,15 +24,12 @@ typedef struct VideoRenderer {
     int default_width;
     int default_height;
     int *is_full_screen;
-    const char *program_name;
     
     // Rendering textures (moved from VideoState)
     SDL_Texture *vid_texture;
     SDL_Texture *sub_texture;
     struct SwsContext *sub_convert_ctx;
     RenderParams render_params;
-    
-    const char *(*title_provider)(void *opaque, const char *fallback);
 } VideoRenderer;
 
 void video_renderer_set_default_window_size(VideoRenderer *vr, VideoState *is, int width, int height, AVRational sar);

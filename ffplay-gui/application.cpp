@@ -654,8 +654,6 @@ void Application::ConfigureVideoRenderer()
     video_renderer_ctx_.default_width = kInitialDefaultWidth;
     video_renderer_ctx_.default_height = kInitialDefaultHeight;
     video_renderer_ctx_.is_full_screen = &is_full_screen_;
-    video_renderer_ctx_.program_name = program_name;
-    video_renderer_ctx_.title_provider = video_window_title;
 }
 
 void Application::EventLoop()

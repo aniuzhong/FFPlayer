@@ -314,13 +314,10 @@ const SDL_RendererInfo *video_renderer_get_info(const VideoRenderer *vr)
 int video_renderer_open(VideoRenderer *vr, VideoState *is)
 {
     int w,h;
-    const char *title;
 
     w = is->width > 0 ? is->width : vr->default_width;
     h = is->height > 0 ? is->height : vr->default_height;
 
-    title = vr->title_provider ? vr->title_provider(is, vr->program_name) : vr->program_name;
-    SDL_SetWindowTitle(vr->window, title && title[0] ? title : vr->program_name);
     SDL_SetWindowSize(vr->window, w, h);
     SDL_SetWindowPosition(vr->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
     if (*vr->is_full_screen)
