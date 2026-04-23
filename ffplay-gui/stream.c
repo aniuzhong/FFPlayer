@@ -37,13 +37,13 @@ void stream_seek(VideoState *is, int64_t pos, int64_t rel, int by_bytes)
         if (by_bytes)
             is->seek_flags |= AVSEEK_FLAG_BYTE;
         is->seek_req = 1;
-        SDL_CondSignal(is->continue_read_thread);
+        SDL_CondSignal(is->demuxer.continue_read_thread);
     }
 }
 
 void stream_toggle_pause(VideoState *is)
 {
-    av_sync_toggle_pause(&is->av_sync, &is->paused, &is->frame_timer, is->read_pause_return);
+    av_sync_toggle_pause(&is->av_sync, &is->paused, &is->frame_timer, is->demuxer.read_pause_return);
 }
 
 void stream_toggle_pause_and_clear_step(VideoState *is)
@@ -243,7 +243,7 @@ VideoState *stream_open(const char *filename,
     if (!is->pictq || !is->subpq || !is->sampq)
         goto fail;
 
-    if (!(is->continue_read_thread = SDL_CreateCond())) {
+    if (!(is->demuxer.continue_read_thread = SDL_CreateCond())) {
         av_log(NULL, AV_LOG_FATAL, "SDL_CreateCond(): %s\n", SDL_GetError());
         goto fail;
     }
@@ -269,8 +269,8 @@ VideoState *stream_open(const char *filename,
     is->audio_clock_serial = -1;
     is->audio_volume = SDL_MIX_MAXVOLUME;
     is->muted = 0;
-    is->read_tid = SDL_CreateThread(read_thread, "read_thread", is);
-    if (!is->read_tid) {
+    is->demuxer.read_tid = SDL_CreateThread(read_thread, "read_thread", is);
+    if (!is->demuxer.read_tid) {
         av_log(NULL, AV_LOG_FATAL, "SDL_CreateThread(): %s\n", SDL_GetError());
         goto fail;
     }
@@ -392,7 +392,7 @@ int stream_component_open(VideoState *is, int stream_index)
         is->audio_stream = stream_index;
         is->audio_st = ic->streams[stream_index];
 
-        if ((ret = decoder_init(&is->auddec, avctx, is->audioq, is->continue_read_thread)) < 0)
+        if ((ret = decoder_init(&is->auddec, avctx, is->audioq, is->demuxer.continue_read_thread)) < 0)
             goto fail;
         if (is->demuxer.ic->iformat->flags & AVFMT_NOTIMESTAMPS) {
             is->auddec.start_pts = is->audio_st->start_time;
@@ -406,17 +406,17 @@ int stream_component_open(VideoState *is, int stream_index)
         is->video_stream = stream_index;
         is->video_st = ic->streams[stream_index];
 
-        if ((ret = decoder_init(&is->viddec, avctx, is->videoq, is->continue_read_thread)) < 0)
+        if ((ret = decoder_init(&is->viddec, avctx, is->videoq, is->demuxer.continue_read_thread)) < 0)
             goto fail;
         if ((ret = decoder_start(&is->viddec, video_thread, "video_decoder", is)) < 0)
             goto out;
-        is->queue_attachments_req = 1;
+        is->demuxer.queue_attachments_req = 1;
         break;
     case AVMEDIA_TYPE_SUBTITLE:
         is->subtitle_stream = stream_index;
         is->subtitle_st = ic->streams[stream_index];
 
-        if ((ret = decoder_init(&is->subdec, avctx, is->subtitleq, is->continue_read_thread)) < 0)
+        if ((ret = decoder_init(&is->subdec, avctx, is->subtitleq, is->demuxer.continue_read_thread)) < 0)
             goto fail;
         if ((ret = decoder_start(&is->subdec, subtitle_thread, "subtitle_decoder", is)) < 0)
             goto out;
@@ -498,9 +498,9 @@ void stream_close(VideoState *is)
     if (!is)
         return;
     demuxer_request_abort(&is->demuxer);
-    if (is->read_tid) {
-        SDL_WaitThread(is->read_tid, NULL);
-        is->read_tid = NULL;
+    if (is->demuxer.read_tid) {
+        SDL_WaitThread(is->demuxer.read_tid, NULL);
+        is->demuxer.read_tid = NULL;
     }
     if (is->audio_stream >= 0)
         stream_component_close(is, is->audio_stream);
@@ -522,8 +522,8 @@ void stream_close(VideoState *is)
         frame_queue_free(&is->sampq);
     if (frame_queue_is_initialized(is->subpq))
         frame_queue_free(&is->subpq);
-    if (is->continue_read_thread)
-        SDL_DestroyCond(is->continue_read_thread);
+    if (is->demuxer.continue_read_thread)
+        SDL_DestroyCond(is->demuxer.continue_read_thread);
     sws_freeContext(is->video_renderer->sub_convert_ctx);
     is->video_renderer->sub_convert_ctx = NULL;
     if (is->video_renderer->vis_texture)

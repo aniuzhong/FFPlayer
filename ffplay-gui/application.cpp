@@ -2,7 +2,6 @@
 #include <limits.h>
 #include <signal.h>
 #include <stdio.h>
-#include <atomic>
 #include <deque>
 #include <mutex>
 #include <memory>
@@ -29,7 +28,6 @@ extern "C" {
 #include <commdlg.h>
 #endif
 
-#include "clock.h"
 #include "av_sync.h"
 #include "audio_pipeline.h"
 #include "demuxer.h"

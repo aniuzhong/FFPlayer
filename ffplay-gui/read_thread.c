@@ -96,7 +96,7 @@ static void handle_pause_resume(VideoState *is, AVFormatContext *ic)
     if (is->paused != is->last_paused) {
         is->last_paused = is->paused;
         if (is->paused)
-            is->read_pause_return = av_read_pause(ic);
+            is->demuxer.read_pause_return = av_read_pause(ic);
         else
             av_read_play(ic);
     }
@@ -127,7 +127,7 @@ static int handle_seek_request(VideoState *is, AVFormatContext *ic)
         av_sync_seek_reset_extclk(&is->av_sync, !!(is->seek_flags & AVSEEK_FLAG_BYTE), seek_target);
     }
     is->seek_req = 0;
-    is->queue_attachments_req = 1;
+    demuxer->queue_attachments_req = 1;
     demuxer_set_eof(demuxer, 0);
     if (is->paused && is->on_step_frame)
         is->on_step_frame(is);
@@ -138,7 +138,7 @@ static int handle_seek_request(VideoState *is, AVFormatContext *ic)
 /* queue attached picture packets (e.g., album art) */
 static int handle_queue_attachments(VideoState *is, AVPacket *pkt)
 {
-    if (!is->queue_attachments_req)
+    if (!is->demuxer.queue_attachments_req)
         return 0;
     
     if (is->video_st && is->video_st->disposition & AV_DISPOSITION_ATTACHED_PIC) {
@@ -148,7 +148,7 @@ static int handle_queue_attachments(VideoState *is, AVPacket *pkt)
         packet_queue_put(is->videoq, pkt);
         packet_queue_put_nullpacket(is->videoq, pkt, is->video_stream);
     }
-    is->queue_attachments_req = 0;
+    is->demuxer.queue_attachments_req = 0;
     return 0;
 }
 
@@ -270,7 +270,7 @@ int read_thread(void *arg)
                 stream_has_enough_packets(is->video_st, is->video_stream, is->videoq) &&
                 stream_has_enough_packets(is->subtitle_st, is->subtitle_stream, is->subtitleq)))) {
             SDL_LockMutex(wait_mutex);
-            SDL_CondWaitTimeout(is->continue_read_thread, wait_mutex, 10);
+            SDL_CondWaitTimeout(demuxer->continue_read_thread, wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
             continue;
         }
@@ -290,7 +290,7 @@ int read_thread(void *arg)
             if (ic->pb && ic->pb->error)
                 break;
             SDL_LockMutex(wait_mutex);
-            SDL_CondWaitTimeout(is->continue_read_thread, wait_mutex, 10);
+            SDL_CondWaitTimeout(demuxer->continue_read_thread, wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
             continue;
         } else {

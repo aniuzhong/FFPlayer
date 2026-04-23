@@ -51,16 +51,13 @@ enum VideoBackgroundType {
 };
 
 typedef struct VideoState {
-    SDL_Thread *read_tid;
     int force_refresh;
     int paused;
     int last_paused;
-    int queue_attachments_req;
     int seek_req;
     int seek_flags;
     int64_t seek_pos;
     int64_t seek_rel;
-    int read_pause_return;
 
     Clock *audclk;
     Clock *vidclk;
@@ -140,8 +137,6 @@ typedef struct VideoState {
     void (*on_step_frame)(struct VideoState *is);
 
     int last_video_stream, last_audio_stream, last_subtitle_stream;
-
-    SDL_cond *continue_read_thread;
 } VideoState;
 
 #endif

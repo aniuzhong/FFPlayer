@@ -2,6 +2,7 @@
 #define FFPLAY_GUI_DEMUXER_H
 
 #include <libavformat/avformat.h>
+#include <SDL_thread.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,6 +16,11 @@ typedef struct Demuxer {
     int              eof;
     double           max_frame_duration;
     char            *input_url;
+    
+    SDL_Thread      *read_tid;
+    SDL_cond        *continue_read_thread;
+    int              queue_attachments_req;
+    int              read_pause_return;
 } Demuxer;
 
 int demuxer_init(Demuxer *demuxer, const char *input_url);
