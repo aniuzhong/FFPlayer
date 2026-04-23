@@ -1,0 +1,181 @@
+#include <math.h>
+
+#include <libavfilter/buffersink.h>
+#include <libavfilter/buffersrc.h>
+#include <libavutil/error.h>
+#include <libavutil/log.h>
+#include <libavutil/pixdesc.h>
+#include <libavutil/time.h>
+
+#include "av_sync.h"
+#include "clock.h"
+#include "demuxer.h"
+#include "filter.h"
+#include "video_renderer.h"
+#include "video_state.h"
+#include "video_thread.h"
+#include "packet_queue.h"
+
+static int queue_picture(VideoState *is, AVFrame *src_frame, double pts, double duration, int64_t pos, int serial)
+{
+    Frame *vp;
+
+    if (!(vp = frame_queue_peek_writable(is->pictq)))
+        return -1;
+
+    vp->sar = src_frame->sample_aspect_ratio;
+    vp->uploaded = 0;
+
+    vp->width = src_frame->width;
+    vp->height = src_frame->height;
+    vp->format = src_frame->format;
+
+    vp->pts = pts;
+    vp->duration = duration;
+    vp->pos = pos;
+    vp->serial = serial;
+
+    if (is->on_frame_size_changed)
+        is->on_frame_size_changed(is, vp->width, vp->height, vp->sar);
+
+    av_frame_move_ref(vp->frame, src_frame);
+    frame_queue_push(is->pictq);
+    return 0;
+}
+
+static int get_video_frame(VideoState *is, AVFrame *frame)
+{
+    int got_picture;
+
+    if ((got_picture = decoder_decode_frame(&is->viddec, frame, NULL)) < 0)
+        return -1;
+
+    if (got_picture) {
+        double dpts = NAN;
+
+        if (frame->pts != AV_NOPTS_VALUE)
+            dpts = av_q2d(is->video_st->time_base) * frame->pts;
+
+        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(demuxer_get_ic(is->demuxer), is->video_st, frame);
+
+        if (frame->pts != AV_NOPTS_VALUE &&
+            av_sync_should_early_drop(&is->av_sync,
+                                      dpts,
+                                      is->frame_last_filter_delay,
+                                      is->viddec.pkt_serial,
+                                      clock_get_serial(is->vidclk),
+                                      packet_queue_get_nb_packets(is->videoq))) {
+            is->frame_drops_early++;
+            av_frame_unref(frame);
+            got_picture = 0;
+        }
+    }
+
+    return got_picture;
+}
+
+int video_thread(void *arg)
+{
+    VideoState *is = (VideoState *)arg;
+    const SDL_RendererInfo *renderer_info = video_renderer_get_info(is->video_renderer);
+    AVFrame *frame = av_frame_alloc();
+    double pts;
+    double duration;
+    int ret;
+    AVRational tb = is->video_st->time_base;
+    AVRational frame_rate = av_guess_frame_rate(demuxer_get_ic(is->demuxer), is->video_st, NULL);
+
+    AVFilterGraph *graph = NULL;
+    AVFilterContext *filt_out = NULL, *filt_in = NULL;
+    int last_w = 0;
+    int last_h = 0;
+    enum AVPixelFormat last_format = (enum AVPixelFormat)-2;
+    int last_serial = -1;
+
+    if (!frame)
+        return AVERROR(ENOMEM);
+
+    for (;;) {
+        ret = get_video_frame(is, frame);
+        if (ret < 0)
+            goto the_end;
+        if (!ret)
+            continue;
+
+        if (last_w != frame->width
+            || last_h != frame->height
+            || last_format != (enum AVPixelFormat)frame->format
+            || last_serial != is->viddec.pkt_serial) {
+            const char *last_fmt_name = av_get_pix_fmt_name(last_format);
+            const char *curr_fmt_name = av_get_pix_fmt_name((enum AVPixelFormat)frame->format);
+            av_log(NULL, AV_LOG_DEBUG,
+                   "Video frame changed from size:%dx%d format:%s serial:%d to size:%dx%d format:%s serial:%d\n",
+                   last_w, last_h,
+                   last_fmt_name ? last_fmt_name : "none", last_serial,
+                   frame->width, frame->height,
+                   curr_fmt_name ? curr_fmt_name : "none", is->viddec.pkt_serial);
+            avfilter_graph_free(&graph);
+            graph = avfilter_graph_alloc();
+            if (!graph) {
+                ret = AVERROR(ENOMEM);
+                goto the_end;
+            }
+            if (!renderer_info || !renderer_info->num_texture_formats) {
+                ret = AVERROR(EINVAL);
+                goto the_end;
+            }
+            if ((ret = configure_video_filters(graph, demuxer_get_ic(is->demuxer), is->video_st, NULL, frame, renderer_info, &is->in_video_filter, &is->out_video_filter)) < 0) {
+                SDL_Event event;
+                event.type = FF_QUIT_EVENT;
+                event.user.data1 = is;
+                SDL_PushEvent(&event);
+                goto the_end;
+            }
+            filt_in  = is->in_video_filter;
+            filt_out = is->out_video_filter;
+            last_w = frame->width;
+            last_h = frame->height;
+            last_format = (enum AVPixelFormat)frame->format;
+            last_serial = is->viddec.pkt_serial;
+            frame_rate = av_buffersink_get_frame_rate(filt_out);
+        }
+
+        ret = av_buffersrc_add_frame(filt_in, frame);
+        if (ret < 0)
+            goto the_end;
+
+        while (ret >= 0) {
+            FrameData *fd;
+
+            is->frame_last_returned_time = av_gettime_relative() / 1000000.0;
+
+            ret = av_buffersink_get_frame_flags(filt_out, frame, 0);
+            if (ret < 0) {
+                if (ret == AVERROR_EOF)
+                    is->viddec.finished = is->viddec.pkt_serial;
+                ret = 0;
+                break;
+            }
+
+            fd = frame->opaque_ref ? (FrameData *)frame->opaque_ref->data : NULL;
+
+            is->frame_last_filter_delay = av_gettime_relative() / 1000000.0 - is->frame_last_returned_time;
+            if (av_sync_should_clear_frame_filter_delay(is->frame_last_filter_delay))
+                is->frame_last_filter_delay = 0;
+            tb = av_buffersink_get_time_base(filt_out);
+            duration = (frame_rate.num && frame_rate.den ? av_q2d((AVRational){frame_rate.den, frame_rate.num}) : 0);
+            pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
+            ret = queue_picture(is, frame, pts, duration, fd ? fd->pkt_pos : -1, is->viddec.pkt_serial);
+            av_frame_unref(frame);
+            if (packet_queue_get_serial(is->videoq) != is->viddec.pkt_serial)
+                break;
+        }
+
+        if (ret < 0)
+            goto the_end;
+    }
+the_end:
+    avfilter_graph_free(&graph);
+    av_frame_free(&frame);
+    return 0;
+}
