@@ -306,30 +306,30 @@ static void video_audio_display(VideoRenderer *vr, VideoState *s)
     for (rdft_bits = 1; (1 << rdft_bits) < 2 * s->height; rdft_bits++)
         ;
     nb_freq = 1 << (rdft_bits - 1);
-    channels = s->audio_tgt.ch_layout.nb_channels;
+    channels = s->audio_pipeline->audio_tgt.ch_layout.nb_channels;
     nb_display_channels = channels;
     if (!s->paused) {
         int data_used= s->show_mode == SHOW_MODE_WAVES ? s->width : (2*nb_freq);
         n = 2 * channels;
-        delay = s->audio_write_buf_size;
+        delay = s->audio_pipeline->audio_write_buf_size;
         delay /= n;
-        if (s->audio_callback_time) {
-            time_diff = av_gettime_relative() - s->audio_callback_time;
-            delay -= (int)((time_diff * s->audio_tgt.freq) / 1000000);
+        if (s->audio_pipeline->audio_callback_time) {
+            time_diff = av_gettime_relative() - s->audio_pipeline->audio_callback_time;
+            delay -= (int)((time_diff * s->audio_pipeline->audio_tgt.freq) / 1000000);
         }
         delay += 2 * data_used;
         if (delay < data_used)
             delay = data_used;
 
-        i_start= x = compute_mod(s->sample_array_index - delay * channels, SAMPLE_ARRAY_SIZE);
+        i_start= x = compute_mod(s->audio_pipeline->sample_array_index - delay * channels, SAMPLE_ARRAY_SIZE);
         if (s->show_mode == SHOW_MODE_WAVES) {
             h = INT_MIN;
             for (i = 0; i < 1000; i += channels) {
                 int idx = (SAMPLE_ARRAY_SIZE + x - i) % SAMPLE_ARRAY_SIZE;
-                int a = s->sample_array[idx];
-                int b = s->sample_array[(idx + 4 * channels) % SAMPLE_ARRAY_SIZE];
-                int c = s->sample_array[(idx + 5 * channels) % SAMPLE_ARRAY_SIZE];
-                int d = s->sample_array[(idx + 9 * channels) % SAMPLE_ARRAY_SIZE];
+                int a = s->audio_pipeline->sample_array[idx];
+                int b = s->audio_pipeline->sample_array[(idx + 4 * channels) % SAMPLE_ARRAY_SIZE];
+                int c = s->audio_pipeline->sample_array[(idx + 5 * channels) % SAMPLE_ARRAY_SIZE];
+                int d = s->audio_pipeline->sample_array[(idx + 9 * channels) % SAMPLE_ARRAY_SIZE];
                 int score = a - d;
                 if (h < score && (b ^ c) < 0) {
                     h = score;
@@ -350,7 +350,7 @@ static void video_audio_display(VideoRenderer *vr, VideoState *s)
             i = i_start + ch;
             y1 = s->ytop + ch * h + (h / 2);
             for (x = 0; x < s->width; x++) {
-                y = (s->sample_array[i] * h2) >> 15;
+                y = (s->audio_pipeline->sample_array[i] * h2) >> 15;
                 if (y < 0) {
                     y = -y;
                     ys = y1 - y;
@@ -407,7 +407,7 @@ static void video_audio_display(VideoRenderer *vr, VideoState *s)
                 i = i_start + ch;
                 for (x = 0; x < 2 * nb_freq; x++) {
                     double w = (x-nb_freq) * (1.0 / nb_freq);
-                    data_in[ch][x] = s->sample_array[i] * (float)(1.0 - w * w);
+                    data_in[ch][x] = s->audio_pipeline->sample_array[i] * (float)(1.0 - w * w);
                     i += channels;
                     if (i >= SAMPLE_ARRAY_SIZE)
                         i -= SAMPLE_ARRAY_SIZE;

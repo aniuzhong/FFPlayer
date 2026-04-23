@@ -5,12 +5,11 @@
 #include <SDL_thread.h>
 
 #include <libavutil/tx.h>
-#include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 #include <libavformat/avformat.h>
 #include <libavfilter/avfilter.h>
 
-#include "audio_device.h"
+#include "audio_pipeline.h"
 #include "decoder.h"
 #include "clock.h"
 #include "av_sync.h"
@@ -23,23 +22,13 @@
 
 #define SDL_VOLUME_STEP (0.75)
 
-#define SAMPLE_CORRECTION_PERCENT_MAX 10
-
-#define AUDIO_DIFF_AVG_NB   20
-
 #define REFRESH_RATE 0.01
-
-#define SAMPLE_ARRAY_SIZE (8 * 65536)
 
 #define CURSOR_HIDE_DELAY 1000000
 
 #define USE_ONEPASS_SUBTITLE_RENDER 1
 
 #define FF_QUIT_EVENT    (SDL_USEREVENT + 2)
-
-enum ShowMode {
-    SHOW_MODE_NONE = -1, SHOW_MODE_VIDEO = 0, SHOW_MODE_WAVES, SHOW_MODE_RDFT, SHOW_MODE_NB
-};
 
 typedef struct AudioDevice AudioDevice;
 typedef struct VideoRenderer VideoRenderer;
@@ -73,35 +62,14 @@ typedef struct VideoState {
     Decoder subdec;
 
     int audio_stream;
-    int64_t audio_callback_time;
-
-    double audio_clock;
-    int audio_clock_serial;
-    double audio_diff_cum;
-    double audio_diff_avg_coef;
-    double audio_diff_threshold;
-    int audio_diff_avg_count;
     AVStream *audio_st;
     PacketQueue *audioq;
-    int audio_hw_buf_size;
-    uint8_t *audio_buf;
-    uint8_t *audio_buf1;
-    unsigned int audio_buf_size;
-    unsigned int audio_buf1_size;
-    int audio_buf_index;
-    int audio_write_buf_size;
-    int audio_volume;
-    int muted;
-    struct AudioParams audio_src;
     struct AudioParams audio_filter_src;
-    struct AudioParams audio_tgt;
-    struct SwrContext *swr_ctx;
     int frame_drops_early;
     int frame_drops_late;
 
     enum ShowMode show_mode;
-    int16_t sample_array[SAMPLE_ARRAY_SIZE];
-    int sample_array_index;
+    AudioPipeline *audio_pipeline;
     int last_i_start;
     AVTXContext *rdft;
     av_tx_fn rdft_fn;

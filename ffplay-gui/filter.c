@@ -234,8 +234,8 @@ int configure_audio_filters(VideoState *is, const char *afilters, int force_outp
     }
     if ((ret = av_opt_set(filt_asink, "sample_formats", "s16", AV_OPT_SEARCH_CHILDREN)) < 0) goto end;
     if (force_output_format) {
-        if ((ret = av_opt_set_array(filt_asink, "channel_layouts", AV_OPT_SEARCH_CHILDREN, 0, 1, AV_OPT_TYPE_CHLAYOUT, &is->audio_tgt.ch_layout)) < 0) goto end;
-        if ((ret = av_opt_set_array(filt_asink, "samplerates", AV_OPT_SEARCH_CHILDREN, 0, 1, AV_OPT_TYPE_INT, &is->audio_tgt.freq)) < 0) goto end;
+        if ((ret = av_opt_set_array(filt_asink, "channel_layouts", AV_OPT_SEARCH_CHILDREN, 0, 1, AV_OPT_TYPE_CHLAYOUT, &is->audio_pipeline->audio_tgt.ch_layout)) < 0) goto end;
+        if ((ret = av_opt_set_array(filt_asink, "samplerates", AV_OPT_SEARCH_CHILDREN, 0, 1, AV_OPT_TYPE_INT, &is->audio_pipeline->audio_tgt.freq)) < 0) goto end;
     }
     ret = avfilter_init_dict(filt_asink, NULL);
     if (ret < 0) goto end;

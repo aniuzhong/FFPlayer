@@ -339,7 +339,7 @@ void Application::RenderImGui()
     if (!isfinite(progress))
         progress = 0.0f;
     if (stream_)
-        volume_percent = 100.0f * (float)stream_->audio_volume / (float)SDL_MIX_MAXVOLUME;
+        volume_percent = 100.0f * (float)stream_->audio_pipeline->audio_volume / (float)SDL_MIX_MAXVOLUME;
 
     ImGui::SetNextWindowPos(ImVec2(0.0f, io.DisplaySize.y - bar_height));
     ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, bar_height));

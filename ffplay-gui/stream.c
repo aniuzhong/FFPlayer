@@ -56,9 +56,9 @@ void stream_toggle_pause_and_clear_step(VideoState *is)
 
 void stream_toggle_mute(VideoState *is)
 {
-    if (!is)
+    if (!is || !is->audio_pipeline)
         return;
-    is->muted = !is->muted;
+    is->audio_pipeline->muted = !is->audio_pipeline->muted;
 }
 
 void stream_toggle_audio_display(VideoState *is)
@@ -83,9 +83,9 @@ void stream_toggle_audio_display(VideoState *is)
 
 void stream_set_volume(VideoState *is, int volume)
 {
-    if (!is)
+    if (!is || !is->audio_pipeline)
         return;
-    is->audio_volume = av_clip(volume, 0, SDL_MIX_MAXVOLUME);
+    is->audio_pipeline->audio_volume = av_clip(volume, 0, SDL_MIX_MAXVOLUME);
 }
 
 void stream_request_refresh(VideoState *is)
@@ -116,12 +116,15 @@ void stream_adjust_volume_step(VideoState *is, int sign, double step)
     if (!is)
         return;
 
-    volume_level = is->audio_volume ?
-        (20 * log(is->audio_volume / (double)SDL_MIX_MAXVOLUME) / log(10)) :
+    if (!is->audio_pipeline)
+        return;
+
+    volume_level = is->audio_pipeline->audio_volume ?
+        (20 * log(is->audio_pipeline->audio_volume / (double)SDL_MIX_MAXVOLUME) / log(10)) :
         -1000.0;
     new_volume = lrint(SDL_MIX_MAXVOLUME * pow(10.0, (volume_level + sign * step) / 20.0));
     stream_set_volume(is,
-                      is->audio_volume == new_volume ? (is->audio_volume + sign) : new_volume);
+                      is->audio_pipeline->audio_volume == new_volume ? (is->audio_pipeline->audio_volume + sign) : new_volume);
 }
 
 void stream_step(VideoState *is)
@@ -270,9 +273,15 @@ VideoState *stream_open(const char *filename,
                  &is->audio_stream,
                  &is->video_stream,
                  demuxer_get_max_frame_duration_ptr(is->demuxer));
-    is->audio_clock_serial = -1;
-    is->audio_volume = SDL_MIX_MAXVOLUME;
-    is->muted = 0;
+    is->audio_pipeline = audio_pipeline_create();
+    if (!is->audio_pipeline)
+        goto fail;
+    audio_pipeline_bind(is->audio_pipeline, &is->av_sync, is->sampq,
+                        is->audioq, is->audio_device,
+                        &is->paused, (int *)&is->show_mode);
+    is->audio_pipeline->audio_clock_serial = -1;
+    is->audio_pipeline->audio_volume = SDL_MIX_MAXVOLUME;
+    is->audio_pipeline->muted = 0;
     if (demuxer_start(is->demuxer, read_thread, is) < 0) {
         av_log(NULL, AV_LOG_FATAL, "Failed to start demuxer thread\n");
         goto fail;
@@ -370,16 +379,13 @@ int stream_component_open(VideoState *is, int stream_index)
             ret = AVERROR(EINVAL);
             goto fail;
         }
-        if ((ret = audio_device_open(is->audio_device, is, &ch_layout, sample_rate, &is->audio_tgt)) < 0)
+        if ((ret = audio_device_open(is->audio_device, is->audio_pipeline, &ch_layout, sample_rate, &is->audio_pipeline->audio_tgt)) < 0)
             goto fail;
-        is->audio_hw_buf_size = ret;
-        is->audio_src = is->audio_tgt;
-        is->audio_buf_size = 0;
-        is->audio_buf_index = 0;
-
-        is->audio_diff_avg_coef = exp(log(0.01) / AUDIO_DIFF_AVG_NB);
-        is->audio_diff_avg_count = 0;
-        is->audio_diff_threshold = (double)(is->audio_hw_buf_size) / is->audio_tgt.bytes_per_sec;
+        is->audio_pipeline->audio_hw_buf_size = ret;
+        is->audio_pipeline->audio_src = is->audio_pipeline->audio_tgt;
+        is->audio_pipeline->audio_buf_size = 0;
+        is->audio_pipeline->audio_buf_index = 0;
+        audio_pipeline_init_sync(is->audio_pipeline);
 
         is->audio_stream = stream_index;
         is->audio_st = ic->streams[stream_index];
@@ -442,10 +448,7 @@ void stream_component_close(VideoState *is, int stream_index)
         if (is->audio_device)
             audio_device_close(is->audio_device);
         decoder_destroy(&is->auddec);
-        swr_free(&is->swr_ctx);
-        av_freep(&is->audio_buf1);
-        is->audio_buf1_size = 0;
-        is->audio_buf = NULL;
+        audio_pipeline_reset(is->audio_pipeline);
 
         if (is->rdft) {
             av_tx_uninit(&is->rdft);
@@ -520,6 +523,7 @@ void stream_close(VideoState *is)
         SDL_DestroyTexture(is->video_renderer->vid_texture);
     if (is->video_renderer->sub_texture)
         SDL_DestroyTexture(is->video_renderer->sub_texture);
+    audio_pipeline_free(&is->audio_pipeline);
     clock_destroy(&is->audclk);
     clock_destroy(&is->vidclk);
     clock_destroy(&is->extclk);
