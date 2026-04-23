@@ -3,6 +3,7 @@
 
 #include <libavutil/error.h>
 #include <libavutil/time.h>
+#include <libavformat/avio.h>
 #include <libavfilter/buffersink.h>
 
 #include "audio_device.h"
@@ -17,6 +18,7 @@
 #include "video_thread.h"
 #include "subtitle_thread.h"
 #include "audio_visualizer.h"
+#include "video_state.h"
 #include "stream.h"
 
 #define VIDEO_PICTURE_QUEUE_SIZE 3
@@ -257,6 +259,126 @@ int stream_needs_refresh(const VideoState *is)
 int stream_is_video_open(const VideoState *is)
 {
     return is && is->width > 0;
+}
+
+/* ── High-level queries ──────────────────────── */
+
+void stream_seek_to_ratio(VideoState *is, float ratio)
+{
+    int64_t ts, size;
+    AVFormatContext *ic;
+    if (!is)
+        return;
+    ic = demuxer_get_ic(is->demuxer);
+    if (!ic)
+        return;
+    ratio = av_clipf(ratio, 0.0f, 1.0f);
+    if (demuxer_get_seek_mode(is->demuxer) || ic->duration <= 0) {
+        if (!ic->pb)
+            return;
+        size = avio_size(ic->pb);
+        if (size <= 0)
+            return;
+        stream_seek(is, (int64_t)(size * ratio), 0, 1);
+        return;
+    }
+    ts = (int64_t)(ratio * ic->duration);
+    if (ic->start_time != AV_NOPTS_VALUE)
+        ts += ic->start_time;
+    stream_seek(is, ts, 0, 0);
+}
+
+double stream_get_position(const VideoState *is)
+{
+    double pos;
+    AVFormatContext *ic;
+    if (!is)
+        return 0.0;
+    pos = get_master_clock(&is->av_sync);
+    if (isnan(pos))
+        return 0.0;
+    ic = demuxer_get_ic(is->demuxer);
+    if (ic && ic->start_time != AV_NOPTS_VALUE)
+        pos -= ic->start_time / (double)AV_TIME_BASE;
+    return pos > 0.0 ? pos : 0.0;
+}
+
+double stream_get_duration(const VideoState *is)
+{
+    AVFormatContext *ic;
+    if (!is)
+        return -1.0;
+    ic = demuxer_get_ic(is->demuxer);
+    if (!ic || ic->duration <= 0)
+        return -1.0;
+    return ic->duration / (double)AV_TIME_BASE;
+}
+
+int stream_is_eof(const VideoState *is)
+{
+    if (!is)
+        return 0;
+    return demuxer_is_eof(is->demuxer);
+}
+
+int stream_has_chapters(const VideoState *is)
+{
+    AVFormatContext *ic;
+    if (!is)
+        return 0;
+    ic = demuxer_get_ic(is->demuxer);
+    return ic && ic->nb_chapters > 1;
+}
+
+const char *stream_get_media_title(const VideoState *is)
+{
+    if (!is)
+        return NULL;
+    return demuxer_get_input_name(is->demuxer);
+}
+
+int stream_can_seek(const VideoState *is)
+{
+    AVFormatContext *ic;
+    if (!is)
+        return 0;
+    ic = demuxer_get_ic(is->demuxer);
+    if (!ic)
+        return 0;
+    if (ic->duration > 0)
+        return 1;
+    return ic->pb && avio_size(ic->pb) > 0;
+}
+
+float stream_get_byte_progress(const VideoState *is)
+{
+    AVFormatContext *ic;
+    int64_t size, pos;
+    if (!is)
+        return -1.0f;
+    ic = demuxer_get_ic(is->demuxer);
+    if (!ic || !ic->pb)
+        return -1.0f;
+    size = avio_size(ic->pb);
+    pos = avio_tell(ic->pb);
+    if (size > 0 && pos >= 0)
+        return av_clipf((float)pos / (float)size, 0.0f, 1.0f);
+    return -1.0f;
+}
+
+void stream_cycle_audio(VideoState *is)
+{
+    if (is) stream_cycle_channel(is, AVMEDIA_TYPE_AUDIO);
+}
+
+void stream_cycle_video(VideoState *is)
+{
+    if (is) stream_cycle_channel(is, AVMEDIA_TYPE_VIDEO);
+}
+
+void stream_cycle_subtitle(VideoState *is)
+{
+    if (is) stream_cycle_channel(is, AVMEDIA_TYPE_SUBTITLE);
 }
 
 void stream_handle_window_size_changed(VideoState *is, int width, int height)

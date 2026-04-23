@@ -1,10 +1,5 @@
-#include <math.h>
+#include <libavutil/mem.h>
 
-#include <libavutil/avutil.h>
-#include <libavutil/common.h>
-#include <libavformat/avio.h>
-
-#include "demuxer.h"
 #include "stream.h"
 #include "video_renderer.h"
 #include "ffplayer.h"
@@ -100,28 +95,9 @@ void ffplayer_seek_relative(FFPlayer *p, double incr_seconds)
 
 void ffplayer_seek_to_ratio(FFPlayer *p, float ratio)
 {
-    int64_t ts;
-    int64_t size;
-    AVFormatContext *ic;
     if (!p || !p->is)
         return;
-    ic = demuxer_get_ic(stream_get_demuxer(p->is));
-    if (!ic)
-        return;
-    ratio = av_clipf(ratio, 0.0f, 1.0f);
-    if (demuxer_get_seek_mode(stream_get_demuxer(p->is)) || ic->duration <= 0) {
-        if (!ic->pb)
-            return;
-        size = avio_size(ic->pb);
-        if (size <= 0)
-            return;
-        stream_seek(p->is, (int64_t)(size * ratio), 0, 1);
-        return;
-    }
-    ts = (int64_t)(ratio * ic->duration);
-    if (ic->start_time != AV_NOPTS_VALUE)
-        ts += ic->start_time;
-    stream_seek(p->is, ts, 0, 0);
+    stream_seek_to_ratio(p->is, ratio);
 }
 
 void ffplayer_seek_chapter(FFPlayer *p, int incr)
@@ -167,30 +143,30 @@ void ffplayer_cycle_audio_track(FFPlayer *p)
 {
     if (!p || !p->is)
         return;
-    stream_cycle_channel(p->is, AVMEDIA_TYPE_AUDIO);
+    stream_cycle_audio(p->is);
 }
 
 void ffplayer_cycle_video_track(FFPlayer *p)
 {
     if (!p || !p->is)
         return;
-    stream_cycle_channel(p->is, AVMEDIA_TYPE_VIDEO);
+    stream_cycle_video(p->is);
 }
 
 void ffplayer_cycle_subtitle_track(FFPlayer *p)
 {
     if (!p || !p->is)
         return;
-    stream_cycle_channel(p->is, AVMEDIA_TYPE_SUBTITLE);
+    stream_cycle_subtitle(p->is);
 }
 
 void ffplayer_cycle_all_tracks(FFPlayer *p)
 {
     if (!p || !p->is)
         return;
-    stream_cycle_channel(p->is, AVMEDIA_TYPE_VIDEO);
-    stream_cycle_channel(p->is, AVMEDIA_TYPE_AUDIO);
-    stream_cycle_channel(p->is, AVMEDIA_TYPE_SUBTITLE);
+    stream_cycle_video(p->is);
+    stream_cycle_audio(p->is);
+    stream_cycle_subtitle(p->is);
 }
 
 /* ── Display mode ─────────────────────────────── */
@@ -206,80 +182,51 @@ void ffplayer_toggle_audio_display(FFPlayer *p)
 
 double ffplayer_get_position(const FFPlayer *p)
 {
-    double pos;
-    AVFormatContext *ic;
     if (!p || !p->is)
         return 0.0;
-    pos = stream_get_master_clock(p->is);
-    if (isnan(pos))
-        return 0.0;
-    ic = demuxer_get_ic(stream_get_demuxer(p->is));
-    if (ic && ic->start_time != AV_NOPTS_VALUE)
-        pos -= ic->start_time / (double)AV_TIME_BASE;
-    return pos > 0.0 ? pos : 0.0;
+    return stream_get_position(p->is);
 }
 
 double ffplayer_get_duration(const FFPlayer *p)
 {
-    AVFormatContext *ic;
     if (!p || !p->is)
         return -1.0;
-    ic = demuxer_get_ic(stream_get_demuxer(p->is));
-    if (!ic || ic->duration <= 0)
-        return -1.0;
-    return ic->duration / (double)AV_TIME_BASE;
+    return stream_get_duration(p->is);
 }
 
 int ffplayer_is_eof(const FFPlayer *p)
 {
     if (!p || !p->is)
         return 0;
-    return demuxer_is_eof(stream_get_demuxer(p->is));
+    return stream_is_eof(p->is);
 }
 
 int ffplayer_has_chapters(const FFPlayer *p)
 {
-    AVFormatContext *ic;
     if (!p || !p->is)
         return 0;
-    ic = demuxer_get_ic(stream_get_demuxer(p->is));
-    return ic && ic->nb_chapters > 1;
+    return stream_has_chapters(p->is);
 }
 
 const char *ffplayer_get_media_title(const FFPlayer *p)
 {
     if (!p || !p->is)
         return NULL;
-    return demuxer_get_input_name(stream_get_demuxer(p->is));
+    return stream_get_media_title(p->is);
 }
 
 int ffplayer_can_seek(const FFPlayer *p)
 {
-    AVFormatContext *ic;
     if (!p || !p->is)
         return 0;
-    ic = demuxer_get_ic(stream_get_demuxer(p->is));
-    if (!ic)
-        return 0;
-    if (ic->duration > 0)
-        return 1;
-    return ic->pb && avio_size(ic->pb) > 0;
+    return stream_can_seek(p->is);
 }
 
 float ffplayer_get_byte_progress(const FFPlayer *p)
 {
-    AVFormatContext *ic;
-    int64_t size, pos;
     if (!p || !p->is)
         return -1.0f;
-    ic = demuxer_get_ic(stream_get_demuxer(p->is));
-    if (!ic || !ic->pb)
-        return -1.0f;
-    size = avio_size(ic->pb);
-    pos = avio_tell(ic->pb);
-    if (size > 0 && pos >= 0)
-        return av_clipf((float)pos / (float)size, 0.0f, 1.0f);
-    return -1.0f;
+    return stream_get_byte_progress(p->is);
 }
 
 /* ── Render loop integration ──────────────────── */

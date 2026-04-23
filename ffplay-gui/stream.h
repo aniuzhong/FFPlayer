@@ -1,11 +1,19 @@
 #ifndef FFPLAY_GUI_STREAM_H
 #define FFPLAY_GUI_STREAM_H
 
-#include "video_state.h"
+#include <stdint.h>
+#include <libavutil/rational.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct VideoState VideoState;
+typedef struct AudioDevice AudioDevice;
+typedef struct VideoRenderer VideoRenderer;
+typedef struct Demuxer Demuxer;
+typedef struct PacketQueue PacketQueue;
+struct AVStream;
 
 void stream_seek(VideoState *is, int64_t pos, int64_t rel, int by_bytes);
 void stream_toggle_pause(VideoState *is);
@@ -26,7 +34,7 @@ VideoState *stream_open(const char *filename,
                         AudioDevice *audio_device,
                         VideoRenderer *video_renderer,
                         void (*frame_size_changed_cb)(VideoState *is, int width, int height, AVRational sar));
-int stream_has_enough_packets(AVStream *st, int stream_id, PacketQueue *queue);
+int stream_has_enough_packets(struct AVStream *st, int stream_id, PacketQueue *queue);
 
 int stream_component_open(VideoState *is, int stream_index);
 void stream_component_close(VideoState *is, int stream_index);
@@ -39,6 +47,20 @@ int         stream_is_paused(const VideoState *is);
 int         stream_get_volume(const VideoState *is);
 int         stream_needs_refresh(const VideoState *is);
 int         stream_is_video_open(const VideoState *is);
+
+/* ── High-level queries ──────────────────────── */
+void        stream_seek_to_ratio(VideoState *is, float ratio);
+double      stream_get_position(const VideoState *is);
+double      stream_get_duration(const VideoState *is);
+int         stream_is_eof(const VideoState *is);
+int         stream_has_chapters(const VideoState *is);
+const char *stream_get_media_title(const VideoState *is);
+int         stream_can_seek(const VideoState *is);
+float       stream_get_byte_progress(const VideoState *is);
+
+void        stream_cycle_audio(VideoState *is);
+void        stream_cycle_video(VideoState *is);
+void        stream_cycle_subtitle(VideoState *is);
 
 #ifdef __cplusplus
 }

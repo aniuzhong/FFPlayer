@@ -4,6 +4,7 @@
 #include <libavutil/log.h>
 
 #include "demuxer.h"
+#include "video_state.h"
 #include "stream.h"
 #include "packet_queue.h"
 #include "read_thread.h"

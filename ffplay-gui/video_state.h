@@ -17,14 +17,6 @@
 #define MAX_QUEUE_SIZE (15 * 1024 * 1024)
 #define MIN_FRAMES 25
 
-#define SDL_VOLUME_STEP (0.75)
-
-#define REFRESH_RATE 0.01
-
-#define CURSOR_HIDE_DELAY 1000000
-
-#define USE_ONEPASS_SUBTITLE_RENDER 1
-
 #define FF_QUIT_EVENT    (SDL_USEREVENT + 2)
 
 typedef struct AudioDevice AudioDevice;
