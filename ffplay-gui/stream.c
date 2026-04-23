@@ -102,7 +102,8 @@ void stream_refresh(VideoState *is, double *remaining_time)
     if (is->show_mode != SHOW_MODE_VIDEO && is->audio_st && is->audio_visualizer) {
         time = av_gettime_relative() / 1000000.0;
         if (is->force_refresh || is->audio_visualizer->last_vis_time + is->audio_visualizer->rdftspeed < time) {
-            video_renderer_display(vr, is);
+            video_renderer_clear(vr);
+            audio_visualizer_render(is->audio_visualizer, vr->renderer, is->xleft, is->ytop, is->width, is->height);
             is->audio_visualizer->last_vis_time = time;
         }
         *remaining_time = FFMIN(*remaining_time, is->audio_visualizer->last_vis_time + is->audio_visualizer->rdftspeed - time);
@@ -187,8 +188,12 @@ retry:
                 stream_toggle_pause(is);
         }
 display:
-        if (is->force_refresh && is->show_mode == SHOW_MODE_VIDEO && frame_queue_is_last_shown(is->pictq))
-            video_renderer_display(vr, is);
+        if (is->force_refresh && is->show_mode == SHOW_MODE_VIDEO && frame_queue_is_last_shown(is->pictq)) {
+            Frame *vp = frame_queue_peek_last(is->pictq);
+            Frame *sp = (is->subtitle_st && frame_queue_nb_remaining(is->subpq) > 0) ? frame_queue_peek(is->subpq) : NULL;
+            video_renderer_clear(vr);
+            video_renderer_draw_video(vr, vp, sp, is->xleft, is->ytop, is->width, is->height);
+        }
     }
     is->force_refresh = 0;
 }
@@ -324,7 +329,7 @@ static void stream_on_frame_size_changed(VideoState *is, int width, int height, 
 {
     if (!is || !is->video_renderer)
         return;
-    video_renderer_set_default_window_size(is->video_renderer, is, width, height, sar);
+    video_renderer_set_default_window_size(is->video_renderer, is->width, is->height, width, height, sar);
 }
 
 VideoState *stream_open(const char *filename,

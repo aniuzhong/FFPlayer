@@ -6,9 +6,10 @@
 #include <libavutil/mathematics.h>
 #include <libavutil/pixdesc.h>
 
-#include "audio_visualizer.h"
-#include "video_state.h"
+#include "frame_queue.h"
 #include "video_renderer.h"
+
+#define USE_ONEPASS_SUBTITLE_RENDER 1
 
 static const struct TextureFormatEntry {
     enum AVPixelFormat format;
@@ -164,7 +165,7 @@ static void set_sdl_yuv_conversion_mode(AVFrame *frame)
 #endif
 }
 
-static void draw_video_background(VideoRenderer *vr, VideoState *is)
+static void draw_video_background(VideoRenderer *vr)
 {
     const int tile_size = VIDEO_BACKGROUND_TILE_SIZE;
     SDL_Rect *rect = &vr->render_params.target_rect;
@@ -200,17 +201,13 @@ static void draw_video_background(VideoRenderer *vr, VideoState *is)
     }
 }
 
-static void video_image_display(VideoRenderer *vr, VideoState *is)
+static void video_image_display(VideoRenderer *vr, Frame *vp, Frame *sp, int xleft, int ytop, int width, int height)
 {
-    Frame *vp;
-    Frame *sp = NULL;
     SDL_Rect *rect = &vr->render_params.target_rect;
 
-    vp = frame_queue_peek_last(is->pictq);
-    calculate_display_rect(rect, is->xleft, is->ytop, is->width, is->height, vp->width, vp->height, vp->sar);
+    calculate_display_rect(rect, xleft, ytop, width, height, vp->width, vp->height, vp->sar);
 
-    if (is->subtitle_st && frame_queue_nb_remaining(is->subpq) > 0) {
-        sp = frame_queue_peek(is->subpq);
+    if (sp) {
         if (vp->pts >= sp->pts + ((float) sp->sub.start_display_time / 1000)) {
             if (!sp->uploaded) {
                 uint8_t* pixels[4];
@@ -263,7 +260,7 @@ static void video_image_display(VideoRenderer *vr, VideoState *is)
         vp->flip_v = vp->frame->linesize[0] < 0;
     }
 
-    draw_video_background(vr, is);
+    draw_video_background(vr);
     SDL_RenderCopyEx(vr->renderer, vr->vid_texture, NULL, rect, 0, NULL,
                      vp->flip_v ? SDL_FLIP_VERTICAL : SDL_FLIP_NONE);
     set_sdl_yuv_conversion_mode(NULL);
@@ -287,11 +284,11 @@ static void video_image_display(VideoRenderer *vr, VideoState *is)
     }
 }
 
-void video_renderer_set_default_window_size(VideoRenderer *vr, VideoState *is, int width, int height, AVRational sar)
+void video_renderer_set_default_window_size(VideoRenderer *vr, int screen_width, int screen_height, int width, int height, AVRational sar)
 {
     SDL_Rect rect;
-    int max_width  = (is && is->width > 0)  ? is->width  : INT_MAX;
-    int max_height = (is && is->height > 0) ? is->height : INT_MAX;
+    int max_width  = screen_width > 0  ? screen_width  : INT_MAX;
+    int max_height = screen_height > 0 ? screen_height : INT_MAX;
     if (max_width == INT_MAX && max_height == INT_MAX)
         max_height = height;
     calculate_display_rect(&rect, 0, 0, max_width, max_height, width, height, sar);
@@ -306,34 +303,31 @@ const SDL_RendererInfo *video_renderer_get_info(const VideoRenderer *vr)
     return &vr->renderer_info;
 }
 
-int video_renderer_open(VideoRenderer *vr, VideoState *is)
+int video_renderer_open(VideoRenderer *vr, int *width, int *height)
 {
-    int w,h;
+    int w, h;
 
-    w = is->width > 0 ? is->width : vr->default_width;
-    h = is->height > 0 ? is->height : vr->default_height;
+    w = (*width > 0) ? *width : vr->default_width;
+    h = (*height > 0) ? *height : vr->default_height;
 
     SDL_SetWindowSize(vr->window, w, h);
 
-    is->width  = w;
-    is->height = h;
+    *width  = w;
+    *height = h;
     return 0;
 }
 
-void video_renderer_display(VideoRenderer *vr, VideoState *is)
+void video_renderer_draw_video(VideoRenderer *vr, Frame *vp, Frame *sp, int xleft, int ytop, int width, int height)
 {
-    if (!is->width) {
-        video_renderer_open(vr, is);
-        if (is->on_video_open)
-            is->on_video_open(is);
-    }
+    if (!vp)
+        return;
+    video_image_display(vr, vp, sp, xleft, ytop, width, height);
+}
 
+void video_renderer_clear(VideoRenderer *vr)
+{
     SDL_SetRenderDrawColor(vr->renderer, 0, 0, 0, 255);
     SDL_RenderClear(vr->renderer);
-    if (is->audio_st && is->show_mode != SHOW_MODE_VIDEO)
-        audio_visualizer_render(is->audio_visualizer, vr->renderer, is->xleft, is->ytop, is->width, is->height);
-    else if (is->video_st)
-        video_image_display(vr, is);
 }
 
 void video_renderer_present(VideoRenderer *vr)

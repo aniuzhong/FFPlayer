@@ -14,8 +14,6 @@
 #include "av_sync.h"
 #include "demuxer.h"
 
-#define VIDEO_BACKGROUND_TILE_SIZE 64
-
 #define MAX_QUEUE_SIZE (15 * 1024 * 1024)
 #define MIN_FRAMES 25
 
@@ -32,12 +30,6 @@
 typedef struct AudioDevice AudioDevice;
 typedef struct AudioVisualizer AudioVisualizer;
 typedef struct VideoRenderer VideoRenderer;
-
-enum VideoBackgroundType {
-    VIDEO_BACKGROUND_TILES,
-    VIDEO_BACKGROUND_COLOR,
-    VIDEO_BACKGROUND_NONE,
-};
 
 typedef struct VideoState {
     int force_refresh;

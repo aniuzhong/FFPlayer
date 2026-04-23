@@ -9,7 +9,15 @@
 extern "C" {
 #endif
 
-typedef struct VideoState VideoState;
+typedef struct Frame Frame;
+
+#define VIDEO_BACKGROUND_TILE_SIZE 64
+
+enum VideoBackgroundType {
+    VIDEO_BACKGROUND_TILES,
+    VIDEO_BACKGROUND_COLOR,
+    VIDEO_BACKGROUND_NONE,
+};
 
 typedef struct RenderParams {
     SDL_Rect target_rect;
@@ -24,17 +32,17 @@ typedef struct VideoRenderer {
     int default_width;
     int default_height;
     
-    // Rendering textures (moved from VideoState)
     SDL_Texture *vid_texture;
     SDL_Texture *sub_texture;
     struct SwsContext *sub_convert_ctx;
     RenderParams render_params;
 } VideoRenderer;
 
-void video_renderer_set_default_window_size(VideoRenderer *vr, VideoState *is, int width, int height, AVRational sar);
+void video_renderer_set_default_window_size(VideoRenderer *vr, int screen_width, int screen_height, int width, int height, AVRational sar);
 const SDL_RendererInfo *video_renderer_get_info(const VideoRenderer *vr);
-int video_renderer_open(VideoRenderer *vr, VideoState *is);
-void video_renderer_display(VideoRenderer *vr, VideoState *is);
+int video_renderer_open(VideoRenderer *vr, int *width, int *height);
+void video_renderer_draw_video(VideoRenderer *vr, Frame *vp, Frame *sp, int xleft, int ytop, int width, int height);
+void video_renderer_clear(VideoRenderer *vr);
 void video_renderer_flush_sub_rect(VideoRenderer *vr, const SDL_Rect *rect);
 void video_renderer_present(VideoRenderer *vr);
 

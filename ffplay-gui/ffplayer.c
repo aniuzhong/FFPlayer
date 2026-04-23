@@ -5,6 +5,8 @@
 #include <libavformat/avio.h>
 
 #include "audio_pipeline.h"
+#include "audio_visualizer.h"
+#include "frame_queue.h"
 #include "demuxer.h"
 #include "stream.h"
 #include "video_renderer.h"
@@ -303,9 +305,27 @@ void ffplayer_refresh(FFPlayer *p, double *remaining_time)
 
 void ffplayer_display(FFPlayer *p)
 {
+    VideoState *is;
+    VideoRenderer *vr;
     if (!p || !p->is)
         return;
-    video_renderer_display(p->video_renderer, p->is);
+    is = p->is;
+    vr = p->video_renderer;
+
+    if (!is->width) {
+        video_renderer_open(vr, &is->width, &is->height);
+        if (is->on_video_open)
+            is->on_video_open(is);
+    }
+
+    video_renderer_clear(vr);
+    if (is->audio_st && is->show_mode != SHOW_MODE_VIDEO)
+        audio_visualizer_render(is->audio_visualizer, vr->renderer, is->xleft, is->ytop, is->width, is->height);
+    else if (is->video_st) {
+        Frame *vp = frame_queue_peek_last(is->pictq);
+        Frame *sp = (is->subtitle_st && frame_queue_nb_remaining(is->subpq) > 0) ? frame_queue_peek(is->subpq) : NULL;
+        video_renderer_draw_video(vr, vp, sp, is->xleft, is->ytop, is->width, is->height);
+    }
 }
 
 /* ── Window events ────────────────────────────── */
