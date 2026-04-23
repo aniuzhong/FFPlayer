@@ -58,40 +58,4 @@ cmake --build build --config Release
 
 3. 解码器内部是否仍可用 Vulkan 由 -hwaccel 与 av_hwdevice_ctx_create 决定。
 
-## feature/ffplay-imgui
-
-- 去掉原版 ffplay.exe 的命令行功能（包括一些高价值的参数 `hwaccel/sync/framedrop/infbuf/genpts/af/vf`）
-- 将 ffplay.c 拆分成更多的文件（文件层面模块化，但运行时边界仍然混乱）
-    - 真正的**模块接口**被 `VideoState` 吞掉
-- 引入 ImGUI
-
-## 播放器化接口重构
-
-- `MediaPlayer 风格`：命令式 API（setDataSource/prepare/start/pause/seekTo/release）
-- `ExoPlayer 风格`：事件回调（IDLE/BUFFERING/READY/ENDED + listener）
-
-```c++
-class IPlayer {
-public:
-  virtual void setDataSource(const std::string& uri) = 0;
-  virtual void prepareAsync() = 0;
-  virtual void play() = 0;
-  virtual void pause() = 0;
-  virtual void stop() = 0;
-  virtual void seekToMs(int64_t positionMs) = 0;
-  virtual void setVolume(float volume01) = 0;
-  virtual void setMuted(bool muted) = 0;
-  virtual void setSurface(void* nativeWindowOrRenderer) = 0;
-  virtual void release() = 0;
-
-  virtual PlayerSnapshot getSnapshot() const = 0;
-  virtual void addListener(IPlayerListener*) = 0;
-};
-```
-
-- `setDataSource` -> stream_open（再拆成 open + prepare）
-- `play/pause` -> stream_toggle_pause_and_clear_step（后续换成显式 play/pause）
-- `seekToMs` -> stream_seek_relative/stream_seek
-- `setVolume/setMuted` -> stream_set_volume + stream_toggle_mute（补 stream_set_muted(bool)）
-- `render loop` -> video_renderer_refresh/display/present
-- `release` -> stream_close
+## v0.1.2
