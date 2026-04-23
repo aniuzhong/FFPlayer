@@ -96,13 +96,20 @@ fail:
     return ret;
 }
 
-int configure_video_filters(AVFilterGraph *graph, VideoState *is, const char *vfilters, AVFrame *frame, const SDL_RendererInfo *renderer_info)
+int configure_video_filters(AVFilterGraph *graph,
+                            AVFormatContext *ic,
+                            AVStream *video_st,
+                            const char *vfilters,
+                            AVFrame *frame,
+                            const SDL_RendererInfo *renderer_info,
+                            AVFilterContext **in_filter,
+                            AVFilterContext **out_filter)
 {
     enum AVPixelFormat pix_fmts[FF_ARRAY_ELEMS(sdl_texture_format_map)];
     int ret;
     AVFilterContext *filt_src = NULL, *filt_out = NULL, *last_filter = NULL;
-    AVCodecParameters *codecpar = is->video_st->codecpar;
-    AVRational fr = av_guess_frame_rate(demuxer_get_ic(is->demuxer), is->video_st, NULL);
+    AVCodecParameters *codecpar = video_st->codecpar;
+    AVRational fr = av_guess_frame_rate(ic, video_st, NULL);
     int nb_pix_fmts = 0;
     int i, j;
     AVBufferSrcParameters *par = av_buffersrc_parameters_alloc();
@@ -127,7 +134,7 @@ int configure_video_filters(AVFilterGraph *graph, VideoState *is, const char *vf
     }
 
     par->format = frame->format;
-    par->time_base = is->video_st->time_base;
+    par->time_base = video_st->time_base;
     par->width = frame->width;
     par->height = frame->height;
     par->sample_aspect_ratio = codecpar->sample_aspect_ratio;
@@ -176,8 +183,8 @@ int configure_video_filters(AVFilterGraph *graph, VideoState *is, const char *vf
         if (sd)
             displaymatrix = (int32_t *)sd->data;
         if (!displaymatrix) {
-            const AVPacketSideData *psd = av_packet_side_data_get(is->video_st->codecpar->coded_side_data,
-                                                                  is->video_st->codecpar->nb_coded_side_data,
+            const AVPacketSideData *psd = av_packet_side_data_get(video_st->codecpar->coded_side_data,
+                                                                  video_st->codecpar->nb_coded_side_data,
                                                                   AV_PKT_DATA_DISPLAYMATRIX);
             if (psd)
                 displaymatrix = (int32_t *)psd->data;
@@ -201,50 +208,56 @@ int configure_video_filters(AVFilterGraph *graph, VideoState *is, const char *vf
 
     if ((ret = configure_filtergraph(graph, vfilters, filt_src, last_filter)) < 0)
         goto fail;
-    is->in_video_filter = filt_src;
-    is->out_video_filter = filt_out;
+    *in_filter = filt_src;
+    *out_filter = filt_out;
 fail:
     av_freep(&par);
     return ret;
 }
 
-int configure_audio_filters(VideoState *is, const char *afilters, int force_output_format)
+int configure_audio_filters(AVFilterGraph **agraph,
+                            const struct AudioParams *src,
+                            const struct AudioParams *tgt,
+                            const char *afilters,
+                            int force_output_format,
+                            AVFilterContext **in_filter,
+                            AVFilterContext **out_filter)
 {
     AVFilterContext *filt_asrc = NULL, *filt_asink = NULL;
     AVBPrint bp;
     char asrc_args[256];
     int ret;
 
-    avfilter_graph_free(&is->agraph);
-    if (!(is->agraph = avfilter_graph_alloc()))
+    avfilter_graph_free(agraph);
+    if (!(*agraph = avfilter_graph_alloc()))
         return AVERROR(ENOMEM);
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_AUTOMATIC);
-    av_channel_layout_describe_bprint(&is->audio_filter_src.ch_layout, &bp);
+    av_channel_layout_describe_bprint(&src->ch_layout, &bp);
     ret = snprintf(asrc_args, sizeof(asrc_args),
                    "sample_rate=%d:sample_fmt=%s:time_base=%d/%d:channel_layout=%s",
-                   is->audio_filter_src.freq, av_get_sample_fmt_name(is->audio_filter_src.fmt),
-                   1, is->audio_filter_src.freq, bp.str);
+                   src->freq, av_get_sample_fmt_name(src->fmt),
+                   1, src->freq, bp.str);
 
-    ret = avfilter_graph_create_filter(&filt_asrc, avfilter_get_by_name("abuffer"), "ffplay_abuffer", asrc_args, NULL, is->agraph);
+    ret = avfilter_graph_create_filter(&filt_asrc, avfilter_get_by_name("abuffer"), "ffplay_abuffer", asrc_args, NULL, *agraph);
     if (ret < 0) goto end;
-    filt_asink = avfilter_graph_alloc_filter(is->agraph, avfilter_get_by_name("abuffersink"), "ffplay_abuffersink");
+    filt_asink = avfilter_graph_alloc_filter(*agraph, avfilter_get_by_name("abuffersink"), "ffplay_abuffersink");
     if (!filt_asink) {
         ret = AVERROR(ENOMEM);
         goto end;
     }
     if ((ret = av_opt_set(filt_asink, "sample_formats", "s16", AV_OPT_SEARCH_CHILDREN)) < 0) goto end;
     if (force_output_format) {
-        if ((ret = av_opt_set_array(filt_asink, "channel_layouts", AV_OPT_SEARCH_CHILDREN, 0, 1, AV_OPT_TYPE_CHLAYOUT, &is->audio_pipeline->audio_tgt.ch_layout)) < 0) goto end;
-        if ((ret = av_opt_set_array(filt_asink, "samplerates", AV_OPT_SEARCH_CHILDREN, 0, 1, AV_OPT_TYPE_INT, &is->audio_pipeline->audio_tgt.freq)) < 0) goto end;
+        if ((ret = av_opt_set_array(filt_asink, "channel_layouts", AV_OPT_SEARCH_CHILDREN, 0, 1, AV_OPT_TYPE_CHLAYOUT, &tgt->ch_layout)) < 0) goto end;
+        if ((ret = av_opt_set_array(filt_asink, "samplerates", AV_OPT_SEARCH_CHILDREN, 0, 1, AV_OPT_TYPE_INT, &tgt->freq)) < 0) goto end;
     }
     ret = avfilter_init_dict(filt_asink, NULL);
     if (ret < 0) goto end;
-    if ((ret = configure_filtergraph(is->agraph, afilters, filt_asrc, filt_asink)) < 0) goto end;
-    is->in_audio_filter = filt_asrc;
-    is->out_audio_filter = filt_asink;
+    if ((ret = configure_filtergraph(*agraph, afilters, filt_asrc, filt_asink)) < 0) goto end;
+    *in_filter = filt_asrc;
+    *out_filter = filt_asink;
 end:
     if (ret < 0)
-        avfilter_graph_free(&is->agraph);
+        avfilter_graph_free(agraph);
     av_bprint_finalize(&bp, NULL);
     return ret;
 }

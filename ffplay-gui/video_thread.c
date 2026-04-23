@@ -12,6 +12,7 @@
 #include "demuxer.h"
 #include "filter.h"
 #include "video_renderer.h"
+#include "video_state.h"
 #include "video_thread.h"
 #include "packet_queue.h"
 
@@ -123,7 +124,7 @@ int video_thread(void *arg)
                 ret = AVERROR(EINVAL);
                 goto the_end;
             }
-            if ((ret = configure_video_filters(graph, is, NULL, frame, renderer_info)) < 0) {
+            if ((ret = configure_video_filters(graph, demuxer_get_ic(is->demuxer), is->video_st, NULL, frame, renderer_info, &is->in_video_filter, &is->out_video_filter)) < 0) {
                 SDL_Event event;
                 event.type = FF_QUIT_EVENT;
                 event.user.data1 = is;

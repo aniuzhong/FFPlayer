@@ -8,6 +8,7 @@
 
 #include "filter.h"
 #include "packet_queue.h"
+#include "video_state.h"
 #include "audio_thread.h"
 
 static int cmp_audio_fmts(enum AVSampleFormat fmt1, int64_t channel_count1,
@@ -62,7 +63,7 @@ int audio_thread(void *arg)
                 is->audio_filter_src.freq           = frame->sample_rate;
                 last_serial                         = is->auddec.pkt_serial;
 
-                if ((ret = configure_audio_filters(is, NULL, 1)) < 0)
+                if ((ret = configure_audio_filters(&is->agraph, &is->audio_filter_src, &is->audio_pipeline->audio_tgt, NULL, 1, &is->in_audio_filter, &is->out_audio_filter)) < 0)
                     goto the_end;
             }
 

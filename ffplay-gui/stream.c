@@ -366,7 +366,7 @@ int stream_component_open(VideoState *is, int stream_index)
             if (ret < 0)
                 goto fail;
             is->audio_filter_src.fmt = avctx->sample_fmt;
-            if ((ret = configure_audio_filters(is, NULL, 0)) < 0)
+            if ((ret = configure_audio_filters(&is->agraph, &is->audio_filter_src, &is->audio_pipeline->audio_tgt, NULL, 0, &is->in_audio_filter, &is->out_audio_filter)) < 0)
                 goto fail;
             sink = is->out_audio_filter;
             sample_rate = av_buffersink_get_sample_rate(sink);
