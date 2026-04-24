@@ -25,6 +25,7 @@ static int decode_interrupt_cb(void *ctx)
 /* find and open the best streams (audio, video, subtitle) */
 static int find_stream_components(VideoState *is)
 {
+    // TODO Move find_stream_components to Demuxer and keep open_stream_component in read_thread.c
     AVFormatContext *ic = demuxer_get_ic(is->demuxer);
     int st_index[AVMEDIA_TYPE_NB];
     int i, ret = -1;
@@ -92,8 +93,9 @@ static int find_stream_components(VideoState *is)
 }
 
 /* handle pause and resume for the stream */
-static void handle_pause_resume(VideoState *is, AVFormatContext *ic)
+static void handle_pause_resume(VideoState *is)
 {
+    AVFormatContext *ic = demuxer_get_ic(is->demuxer);
     if (is->paused != is->last_paused) {
         is->last_paused = is->paused;
         if (is->paused)
@@ -104,10 +106,10 @@ static void handle_pause_resume(VideoState *is, AVFormatContext *ic)
 }
 
 /* handle seek request from user */
-static int handle_seek_request(VideoState *is, AVFormatContext *ic)
+static int handle_seek_request(VideoState *is)
 {
     Demuxer *demuxer = is->demuxer;
-    
+
     if (!is->seek_req)
         return 0;
     
@@ -194,7 +196,7 @@ int read_thread(void *arg)
         goto fail;
     }
 
-    /* TODO Move avformat_alloc_context() to demuxer */
+    /* TODO Move avformat_alloc_context() to demuxer_create (allocate in stream_open()) */
     ic = avformat_alloc_context();
     if (!ic) {
         av_log(NULL, AV_LOG_FATAL, "Could not allocate context.\n");
@@ -225,6 +227,7 @@ int read_thread(void *arg)
         goto fail;
     }
 
+    /* TODO Provide modifier in demuxer */
     if (ic->pb)
         ic->pb->eof_reached = 0;
 
@@ -248,7 +251,7 @@ int read_thread(void *arg)
         if (demuxer_is_aborted(demuxer))
             break;
         
-        handle_pause_resume(is, ic);
+        handle_pause_resume(is);
         
 #if CONFIG_RTSP_DEMUXER || CONFIG_MMSH_PROTOCOL
         if (is->paused &&
@@ -259,7 +262,7 @@ int read_thread(void *arg)
         }
 #endif
         
-        if (handle_seek_request(is, ic) < 0) {
+        if (handle_seek_request(is) < 0) {
             ret = -1;
             goto fail;
         }
@@ -314,6 +317,7 @@ int read_thread(void *arg)
        Only goto-fail paths set ret to a non-zero error code before jumping. */
     ret = 0;
 fail:
+    /* TODO Move avformat_close_input to Demuxer */
     if (ic && !demuxer_get_ic(demuxer))
         avformat_close_input(&ic);
 
