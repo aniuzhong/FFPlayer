@@ -13,7 +13,7 @@
 
 typedef struct MyAVPacketList {
     AVPacket *pkt;
-    int       serial; // Packet serial number
+    int       serial; /* Packet serial number */
 } MyAVPacketList;
 
 struct PacketQueue {

@@ -41,14 +41,14 @@ void stream_component_close(VideoState *is, int stream_index);
 void stream_close(VideoState *is);
 void stream_cycle_channel(VideoState *is, int codec_type);
 
-/* ── Accessors (opaque-friendly) ─────────────── */
+/* -- Accessors (opaque-friendly) --------------- */
 Demuxer    *stream_get_demuxer(const VideoState *is);
 int         stream_is_paused(const VideoState *is);
 int         stream_get_volume(const VideoState *is);
 int         stream_needs_refresh(const VideoState *is);
 int         stream_is_video_open(const VideoState *is);
 
-/* ── High-level queries ──────────────────────── */
+/* -- High-level queries ------------------------ */
 void        stream_seek_to_ratio(VideoState *is, float ratio);
 double      stream_get_position(const VideoState *is);
 double      stream_get_duration(const VideoState *is);

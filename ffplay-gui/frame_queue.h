@@ -27,16 +27,16 @@ typedef struct FrameQueue FrameQueue;
 typedef struct Frame {
     AVFrame     *frame;
     AVSubtitle   sub;
-    int          serial;     // Frame serial number
-    double       pts;        // Presentation timestamp
-    double       duration;   // Estimated duration of the frame
-    int64_t      pos;        // Byte position of the frame in the input file
-    int          width;      // Frame width
-    int          height;     // Frame height
-    int          format;     // Frame format
-    AVRational   sar;        // Sample aspect ratio
-    int          uploaded;   // Flag indicating if the frame has been uploaded
-    int          flip_v;     // Flag indicating if the frame should be flipped vertically
+    int          serial;     /* Frame serial number */
+    double       pts;        /* Presentation timestamp */
+    double       duration;   /* Estimated duration of the frame */
+    int64_t      pos;        /* Byte position of the frame in the input file */
+    int          width;      /* Frame width */
+    int          height;     /* Frame height */
+    int          format;     /* Frame format */
+    AVRational   sar;        /* Sample aspect ratio */
+    int          uploaded;   /* Flag indicating if the frame has been uploaded */
+    int          flip_v;     /* Flag indicating if the frame should be flipped vertically */
 } Frame;
 
 typedef struct FrameQueue FrameQueue;

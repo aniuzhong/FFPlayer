@@ -17,16 +17,16 @@
 #define FRAME_QUEUE_SIZE FFMAX(SAMPLE_QUEUE_SIZE, FFMAX(VIDEO_PICTURE_QUEUE_SIZE, SUBPICTURE_QUEUE_SIZE))
 
 struct FrameQueue {
-    Frame        queue[FRAME_QUEUE_SIZE]; // Array of frames
-    int          rindex; // Index of the next readable frame
-    int          windex; // Index of the next writable frame
-    int          size; // Number of frames in the queue
-    int          max_size; // Maximum number of frames in the queue
-    int          keep_last; // Flag indicating if the last frame should be kept
-    int          rindex_shown; // Index of the last shown frame
-    SDL_mutex   *mutex; // Mutex protecting the queue
-    SDL_cond    *cond; // Condition variable for wait/signal
-    PacketQueue *pktq; // Pointer to the packet queue
+    Frame        queue[FRAME_QUEUE_SIZE]; /* Array of frames */
+    int          rindex;                  /* Index of the next readable frame */
+    int          windex;                  /* Index of the next writable frame */
+    int          size;                    /* Number of frames in the queue */
+    int          max_size;                /* Maximum number of frames in the queue */
+    int          keep_last;               /* Flag indicating if the last frame should be kept */
+    int          rindex_shown;            /* Index of the last shown frame */
+    SDL_mutex   *mutex;                   /* Mutex protecting the queue */
+    SDL_cond    *cond;                    /* Condition variable for wait/signal */
+    PacketQueue *pktq;                    /* Pointer to the packet queue */
 };
 
 static void frame_queue_unref_item(Frame *vp)

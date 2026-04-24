@@ -27,18 +27,18 @@ typedef struct AudioDevice {
 } AudioDevice;
 
 /**
- *
+ * Resets the audio device.
  */
 void audio_device_reset(AudioDevice *device);
 
 /**
- *
+ * Sets the callback function for opening the audio device.
  */
 void audio_device_set_open_cb(AudioDevice *device,
                               int (*open_cb)(void *opaque, AVChannelLayout *wanted_channel_layout, int wanted_sample_rate, struct AudioParams *audio_hw_params));
 
 /**
- *
+ * Opens the audio device using the specified callback function.
  */
 int audio_device_open(AudioDevice *device,
                       void *opaque,
@@ -47,7 +47,7 @@ int audio_device_open(AudioDevice *device,
                       struct AudioParams *audio_hw_params);
 
 /**
- *
+ * Opens the audio device using SDL.
  */
 int audio_device_open_sdl(AudioDevice *device,
                           void *opaque,
@@ -57,12 +57,12 @@ int audio_device_open_sdl(AudioDevice *device,
                           struct AudioParams *audio_hw_params);
 
 /**
- *
+ * Pauses or resumes the audio device.
  */
 void audio_device_pause(AudioDevice *device, int pause_on);
 
 /**
- *
+ * Closes the audio device.
  */
 void audio_device_close(AudioDevice *device);
 

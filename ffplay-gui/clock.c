@@ -16,8 +16,8 @@ struct Clock {
     double speed;
     int    serial;
     int    paused;
-    int    (*queue_serial_getter)(void *opaque); // Function pointer to get the serial of the packet queue
-    void   *queue_serial_opaque; // Opaque pointer to the packet queue
+    int    (*queue_serial_getter)(void *opaque); /* Function pointer to get the serial of the packet queue */
+    void   *queue_serial_opaque; /* Opaque pointer to the packet queue */
 };
 
 static int packet_queue_serial_getter(void *opaque)

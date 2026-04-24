@@ -229,7 +229,7 @@ void stream_display(VideoState *is, VideoRenderer *vr)
     }
 }
 
-/* ── Accessors ────────────────────────────────── */
+/* -- Accessors ---------------------------------- */
 
 Demuxer *stream_get_demuxer(const VideoState *is)
 {
@@ -261,7 +261,7 @@ int stream_is_video_open(const VideoState *is)
     return is && is->width > 0;
 }
 
-/* ── High-level queries ──────────────────────── */
+/* -- High-level queries ------------------------ */
 
 void stream_seek_to_ratio(VideoState *is, float ratio)
 {

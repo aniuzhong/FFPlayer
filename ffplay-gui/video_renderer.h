@@ -31,7 +31,6 @@ typedef struct VideoRenderer {
     SDL_RendererInfo renderer_info;
     int default_width;
     int default_height;
-    
     SDL_Texture *vid_texture;
     SDL_Texture *sub_texture;
     struct SwsContext *sub_convert_ctx;

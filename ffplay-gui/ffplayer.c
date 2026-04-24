@@ -10,7 +10,7 @@ struct FFPlayer {
     VideoState    *is;
 };
 
-/* ── Lifecycle ────────────────────────────────── */
+/* -- Lifecycle ---------------------------------- */
 
 FFPlayer *ffplayer_create(AudioDevice *audio_device, VideoRenderer *video_renderer)
 {
@@ -36,7 +36,7 @@ void ffplayer_free(FFPlayer **pp)
     av_freep(pp);
 }
 
-/* ── Open / Close media ───────────────────────── */
+/* -- Open / Close media ------------------------- */
 
 int ffplayer_open(FFPlayer *p, const char *url)
 {
@@ -61,7 +61,7 @@ int ffplayer_is_open(const FFPlayer *p)
     return p && p->is != NULL;
 }
 
-/* ── Playback control ─────────────────────────── */
+/* -- Playback control --------------------------- */
 
 void ffplayer_toggle_pause(FFPlayer *p)
 {
@@ -84,7 +84,7 @@ void ffplayer_step_frame(FFPlayer *p)
     stream_step(p->is);
 }
 
-/* ── Seek ─────────────────────────────────────── */
+/* -- Seek --------------------------------------- */
 
 void ffplayer_seek_relative(FFPlayer *p, double incr_seconds)
 {
@@ -107,7 +107,7 @@ void ffplayer_seek_chapter(FFPlayer *p, int incr)
     stream_seek_chapter(p->is, incr);
 }
 
-/* ── Audio ────────────────────────────────────── */
+/* -- Audio -------------------------------------- */
 
 void ffplayer_set_volume(FFPlayer *p, int volume)
 {
@@ -137,7 +137,7 @@ void ffplayer_toggle_mute(FFPlayer *p)
     stream_toggle_mute(p->is);
 }
 
-/* ── Track selection ──────────────────────────── */
+/* -- Track selection ---------------------------- */
 
 void ffplayer_cycle_audio_track(FFPlayer *p)
 {
@@ -169,7 +169,7 @@ void ffplayer_cycle_all_tracks(FFPlayer *p)
     stream_cycle_subtitle(p->is);
 }
 
-/* ── Display mode ─────────────────────────────── */
+/* -- Display mode ------------------------------- */
 
 void ffplayer_toggle_audio_display(FFPlayer *p)
 {
@@ -178,7 +178,7 @@ void ffplayer_toggle_audio_display(FFPlayer *p)
     stream_toggle_audio_display(p->is);
 }
 
-/* ── Media info ───────────────────────────────── */
+/* -- Media info --------------------------------- */
 
 double ffplayer_get_position(const FFPlayer *p)
 {
@@ -229,7 +229,7 @@ float ffplayer_get_byte_progress(const FFPlayer *p)
     return stream_get_byte_progress(p->is);
 }
 
-/* ── Render loop integration ──────────────────── */
+/* -- Render loop integration -------------------- */
 
 int ffplayer_needs_refresh(const FFPlayer *p)
 {
@@ -252,7 +252,7 @@ void ffplayer_display(FFPlayer *p)
     stream_display(p->is, p->video_renderer);
 }
 
-/* ── Window events ────────────────────────────── */
+/* -- Window events ------------------------------ */
 
 void ffplayer_handle_window_size_changed(FFPlayer *p, int width, int height)
 {
