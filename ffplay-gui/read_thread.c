@@ -174,7 +174,7 @@ int read_thread(void *arg)
     VideoState *is = (VideoState *)arg;
     Demuxer *demuxer = is->demuxer;
     AVFormatContext *ic = NULL;
-    int err, ret;
+    int err, ret = 0;
     AVPacket *pkt = NULL;
     SDL_mutex *wait_mutex = SDL_CreateMutex();
     AVDictionary *open_opts = NULL;
@@ -259,11 +259,15 @@ int read_thread(void *arg)
         }
 #endif
         
-        if (handle_seek_request(is, ic) < 0)
+        if (handle_seek_request(is, ic) < 0) {
+            ret = -1;
             goto fail;
+        }
         
-        if (handle_queue_attachments(is, pkt) < 0)
+        if (handle_queue_attachments(is, pkt) < 0) {
+            ret = -1;
             goto fail;
+        }
 
         /* throttle reading if queue is full or has enough packets */
         if (!demuxer_is_realtime(demuxer) &&
@@ -306,6 +310,8 @@ int read_thread(void *arg)
         route_packet_to_queue(is, pkt);
     }
 
+    /* The for-loop exits via break (abort / pb->error), not via goto fail.
+       Only goto-fail paths set ret to a non-zero error code before jumping. */
     ret = 0;
 fail:
     if (ic && !demuxer_get_ic(demuxer))
@@ -313,13 +319,8 @@ fail:
 
     av_packet_free(&pkt);
 
-    /* TODO Do not use SDL_PushEvent() to notify quit event */
-    if (ret != 0) {
-        SDL_Event event;
-        event.type = FF_QUIT_EVENT;
-        event.user.data1 = is;
-        SDL_PushEvent(&event);
-    }
+    if (ret != 0)
+        is->quit_request = 1;
     SDL_DestroyMutex(wait_mutex);
     return 0;
 }

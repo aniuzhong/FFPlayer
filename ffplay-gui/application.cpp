@@ -34,7 +34,6 @@ extern "C" {
 #include "audio_visualizer.h"
 }
 
-#define FF_QUIT_EVENT (SDL_USEREVENT + 2)
 
 const char program_name[] = "ffplay";
 const int program_birth_year = 2003;
@@ -566,6 +565,8 @@ void Application::RefreshLoopWaitEvent(SDL_Event *event)
         if (remaining_time > 0.0)
             av_usleep((int64_t)(remaining_time * 1000000.0));
         remaining_time = FFPLAYER_REFRESH_RATE;
+        if (ffplayer_has_quit_request(player_))
+            DoExit();
         if (ffplayer_needs_refresh(player_))
             ffplayer_refresh(player_, &remaining_time);
         video_renderer_clear(&video_renderer_ctx_);
@@ -780,7 +781,6 @@ do_seek:
             }
             break;
         case SDL_QUIT:
-        case FF_QUIT_EVENT:
             DoExit();
             break;
         default:

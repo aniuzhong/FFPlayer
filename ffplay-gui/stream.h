@@ -55,6 +55,7 @@ void        stream_seek_to_ratio(VideoState *is, float ratio);
 double      stream_get_position(const VideoState *is);
 double      stream_get_duration(const VideoState *is);
 int         stream_is_eof(const VideoState *is);
+int         stream_has_quit_request(const VideoState *is);
 int         stream_has_chapters(const VideoState *is);
 const char *stream_get_media_title(const VideoState *is);
 int         stream_can_seek(const VideoState *is);

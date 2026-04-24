@@ -73,6 +73,7 @@ void ffplayer_toggle_audio_display(FFPlayer *p);
 double ffplayer_get_position(const FFPlayer *p);
 double ffplayer_get_duration(const FFPlayer *p);
 int    ffplayer_is_eof(const FFPlayer *p);
+int    ffplayer_has_quit_request(const FFPlayer *p);
 int    ffplayer_has_chapters(const FFPlayer *p);
 const char *ffplayer_get_media_title(const FFPlayer *p);
 int    ffplayer_can_seek(const FFPlayer *p);

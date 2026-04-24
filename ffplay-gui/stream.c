@@ -284,6 +284,13 @@ int stream_is_eof(const VideoState *is)
     return demuxer_is_eof(is->demuxer);
 }
 
+int stream_has_quit_request(const VideoState *is)
+{
+    if (!is)
+        return 0;
+    return is->quit_request;
+}
+
 int stream_has_chapters(const VideoState *is)
 {
     AVFormatContext *ic;

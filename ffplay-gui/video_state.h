@@ -14,8 +14,6 @@
 #define MAX_QUEUE_SIZE (15 * 1024 * 1024)
 #define MIN_FRAMES 25
 
-#define FF_QUIT_EVENT    (SDL_USEREVENT + 2)
-
 typedef struct AudioDevice AudioDevice;
 typedef struct AudioVisualizer AudioVisualizer;
 
@@ -79,6 +77,8 @@ typedef struct VideoState {
     void (*on_step_frame)(struct VideoState *is);
 
     int last_video_stream, last_audio_stream, last_subtitle_stream;
+
+    int quit_request;
 } VideoState;
 
 #endif

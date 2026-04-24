@@ -209,6 +209,13 @@ int ffplayer_is_eof(const FFPlayer *p)
     return stream_is_eof(p->is);
 }
 
+int ffplayer_has_quit_request(const FFPlayer *p)
+{
+    if (!p || !p->is)
+        return 0;
+    return stream_has_quit_request(p->is);
+}
+
 int ffplayer_has_chapters(const FFPlayer *p)
 {
     if (!p || !p->is)
