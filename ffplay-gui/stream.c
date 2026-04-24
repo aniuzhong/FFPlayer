@@ -848,7 +848,7 @@ the_end:
 
 AudioVisualizer *stream_get_audio_visualizer(const VideoState *is)
 {
-    return is ? is->audio_visualizer : NULL;
+    return (is && is->audio_st) ? is->audio_visualizer : NULL;
 }
 
 AVFrame *stream_get_video_frame(const VideoState *is)
