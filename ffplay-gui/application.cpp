@@ -30,6 +30,12 @@ extern "C" {
 
 #include "application.h"
 
+extern "C" {
+#include "audio_visualizer.h"
+}
+
+#define FF_QUIT_EVENT (SDL_USEREVENT + 2)
+
 const char program_name[] = "ffplay";
 const int program_birth_year = 2003;
 
@@ -166,7 +172,9 @@ int Application::Execute()
     SDL_ShowWindow(window_);
     SDL_SetWindowTitle(window_, "ffplay-gui");
 
-    player_ = ffplayer_create(&audio_device_, &video_renderer_ctx_);
+    player_ = ffplayer_create(&audio_device_);
+    ffplayer_set_renderer_info(player_, &video_renderer_ctx_.renderer_info);
+    ffplayer_set_frame_size_callback(player_, Application::OnFrameSizeChanged, this);
     InitImGui();
 
     EventLoop();
@@ -496,6 +504,8 @@ bool Application::OpenFileDialogAndPlay()
     }
 
     ffplayer_close(player_);
+    video_renderer_cleanup_textures(&video_renderer_ctx_);
+    video_open_done_ = 0;
     stable_progress_ready_ = false;
 
     if (ffplayer_open(player_, utf8_path.data()) < 0) {
@@ -520,6 +530,7 @@ bool Application::OpenFileDialogAndPlay()
 
 [[noreturn]] void Application::DoExit()
 {
+    video_renderer_cleanup_textures(&video_renderer_ctx_);
     ffplayer_free(&player_);
     ShutdownImGui();
     if (renderer_) {
@@ -557,12 +568,9 @@ void Application::RefreshLoopWaitEvent(SDL_Event *event)
         remaining_time = FFPLAYER_REFRESH_RATE;
         if (ffplayer_needs_refresh(player_))
             ffplayer_refresh(player_, &remaining_time);
+        video_renderer_clear(&video_renderer_ctx_);
         if (ffplayer_is_open(player_))
-            ffplayer_display(player_);
-        else {
-            SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
-            SDL_RenderClear(renderer_);
-        }
+            DisplayVideo();
         RenderImGui();
         video_renderer_present(&video_renderer_ctx_);
         SDL_PumpEvents();
@@ -607,6 +615,41 @@ void Application::ConfigureVideoRenderer()
     video_renderer_ctx_.default_height = kInitialDefaultHeight;
 }
 
+void Application::DisplayVideo()
+{
+    int win_w, win_h;
+    SDL_GetWindowSize(window_, &win_w, &win_h);
+
+    if (!video_open_done_) {
+        video_renderer_open(&video_renderer_ctx_, &win_w, &win_h);
+        ffplayer_set_window_size(player_, win_w, win_h);
+        video_open_done_ = 1;
+    }
+
+    enum FFPlayerShowMode mode = ffplayer_get_show_mode(player_);
+    if (mode != FFPLAYER_SHOW_MODE_VIDEO) {
+        AudioVisualizer *vis = ffplayer_get_audio_visualizer(player_);
+        if (vis)
+            audio_visualizer_render(vis, renderer_, 0, 0, win_w, win_h);
+    } else {
+        AVFrame *frame = ffplayer_get_video_frame(player_);
+        AVSubtitle *subtitle = ffplayer_get_subtitle(player_);
+        if (frame)
+            video_renderer_draw_video(&video_renderer_ctx_, frame, subtitle, 0, 0, win_w, win_h);
+    }
+}
+
+void Application::OnFrameSizeChanged(void *opaque, int width, int height, AVRational sar)
+{
+    auto *app = static_cast<Application *>(opaque);
+    if (!app)
+        return;
+    video_renderer_set_default_window_size(&app->video_renderer_ctx_,
+                                            app->video_renderer_ctx_.default_width,
+                                            app->video_renderer_ctx_.default_height,
+                                            width, height, sar);
+}
+
 void Application::EventLoop()
 {
     SDL_Event event;
@@ -634,7 +677,7 @@ void Application::EventLoop()
             }
             if (!ffplayer_is_open(player_))
                 continue;
-            if (!ffplayer_is_renderer_open(player_))
+            if (!ffplayer_is_video_open(player_))
                 continue;
             switch (event.key.keysym.sym) {
             case SDLK_p:
@@ -737,7 +780,7 @@ do_seek:
             }
             break;
         case SDL_QUIT:
-        case FFPLAYER_QUIT_EVENT:
+        case FF_QUIT_EVENT:
             DoExit();
             break;
         default:

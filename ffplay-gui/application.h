@@ -32,7 +32,10 @@ private:
     void RefreshLoopWaitEvent(SDL_Event *event);
     void InitWindowAndRenderer();
     void ConfigureVideoRenderer();
+    void DisplayVideo();
     void EventLoop();
+
+    static void OnFrameSizeChanged(void *opaque, int width, int height, AVRational sar);
 
 private:
     SDL_Window *window_ = nullptr;
@@ -43,6 +46,7 @@ private:
     int is_full_screen_ = 0;
     FFPlayer *player_ = nullptr;
     VideoRenderer video_renderer_ctx_ = {};
+    int video_open_done_ = 0;
     bool open_dialog_active_ = false;
     bool imgui_ready_ = false;
     float pending_seek_ratio_ = -1.0f;

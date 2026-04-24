@@ -2,14 +2,14 @@
 #define FFPLAY_GUI_VIDEO_RENDERER_H
 
 #include <SDL.h>
+#include <libavutil/frame.h>
 #include <libavutil/rational.h>
+#include <libavcodec/avcodec.h>
 #include <libswscale/swscale.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef struct Frame Frame;
 
 #define VIDEO_BACKGROUND_TILE_SIZE 64
 
@@ -35,15 +35,17 @@ typedef struct VideoRenderer {
     SDL_Texture *sub_texture;
     struct SwsContext *sub_convert_ctx;
     RenderParams render_params;
+    const uint8_t *last_vid_data;
+    int last_flip_v;
 } VideoRenderer;
 
 void video_renderer_set_default_window_size(VideoRenderer *vr, int screen_width, int screen_height, int width, int height, AVRational sar);
 const SDL_RendererInfo *video_renderer_get_info(const VideoRenderer *vr);
 int video_renderer_open(VideoRenderer *vr, int *width, int *height);
-void video_renderer_draw_video(VideoRenderer *vr, Frame *vp, Frame *sp, int xleft, int ytop, int width, int height);
+void video_renderer_draw_video(VideoRenderer *vr, AVFrame *frame, AVSubtitle *subtitle, int xleft, int ytop, int width, int height);
 void video_renderer_clear(VideoRenderer *vr);
-void video_renderer_flush_sub_rect(VideoRenderer *vr, const SDL_Rect *rect);
 void video_renderer_present(VideoRenderer *vr);
+void video_renderer_cleanup_textures(VideoRenderer *vr);
 
 #ifdef __cplusplus
 }

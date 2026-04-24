@@ -64,7 +64,7 @@ static int find_stream_components(VideoState *is)
         AVCodecParameters *codecpar = st->codecpar;
         AVRational sar = av_guess_sample_aspect_ratio(ic, st, NULL);
         if (codecpar->width && is->on_frame_size_changed)
-            is->on_frame_size_changed(is, codecpar->width, codecpar->height, sar);
+            is->on_frame_size_changed(is->frame_size_opaque, codecpar->width, codecpar->height, sar);
     }
 
     if (st_index[AVMEDIA_TYPE_AUDIO] >= 0) {

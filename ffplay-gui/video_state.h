@@ -18,7 +18,6 @@
 
 typedef struct AudioDevice AudioDevice;
 typedef struct AudioVisualizer AudioVisualizer;
-typedef struct VideoRenderer VideoRenderer;
 
 typedef struct VideoState {
     int force_refresh;
@@ -74,9 +73,9 @@ typedef struct VideoState {
     AVFilterGraph *agraph;
     Demuxer *demuxer;
     AudioDevice *audio_device;
-    VideoRenderer *video_renderer;
-    void (*on_video_open)(struct VideoState *is);
-    void (*on_frame_size_changed)(struct VideoState *is, int width, int height, AVRational sar);
+    SDL_RendererInfo renderer_info;
+    void (*on_frame_size_changed)(void *opaque, int width, int height, AVRational sar);
+    void *frame_size_opaque;
     void (*on_step_frame)(struct VideoState *is);
 
     int last_video_stream, last_audio_stream, last_subtitle_stream;

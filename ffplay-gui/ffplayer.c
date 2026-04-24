@@ -1,27 +1,35 @@
+#include <string.h>
 #include <libavutil/mem.h>
 
 #include "stream.h"
-#include "video_renderer.h"
 #include "ffplayer.h"
 
 struct FFPlayer {
     AudioDevice   *audio_device;
-    VideoRenderer *video_renderer;
     VideoState    *is;
+    ffplayer_frame_size_cb frame_size_cb;
+    void *frame_size_opaque;
+    SDL_RendererInfo renderer_info;
 };
+
+static void ffplayer_on_frame_size_changed(void *opaque, int width, int height, AVRational sar)
+{
+    FFPlayer *p = (FFPlayer *)opaque;
+    if (p && p->frame_size_cb)
+        p->frame_size_cb(p->frame_size_opaque, width, height, sar);
+}
 
 /* -- Lifecycle ---------------------------------- */
 
-FFPlayer *ffplayer_create(AudioDevice *audio_device, VideoRenderer *video_renderer)
+FFPlayer *ffplayer_create(AudioDevice *audio_device)
 {
     FFPlayer *p;
-    if (!audio_device || !video_renderer)
+    if (!audio_device)
         return NULL;
     p = av_mallocz(sizeof(FFPlayer));
     if (!p)
         return NULL;
-    p->audio_device  = audio_device;
-    p->video_renderer = video_renderer;
+    p->audio_device = audio_device;
     p->is = NULL;
     return p;
 }
@@ -44,7 +52,7 @@ int ffplayer_open(FFPlayer *p, const char *url)
         return -1;
     if (p->is)
         ffplayer_close(p);
-    p->is = stream_open(url, p->audio_device, p->video_renderer, NULL);
+    p->is = stream_open(url, p->audio_device, &p->renderer_info, ffplayer_on_frame_size_changed, p);
     return p->is ? 0 : -1;
 }
 
@@ -245,11 +253,41 @@ void ffplayer_refresh(FFPlayer *p, double *remaining_time)
     stream_refresh(p->is, remaining_time);
 }
 
-void ffplayer_display(FFPlayer *p)
+/* -- Frame access ------------------------------- */
+
+AVFrame *ffplayer_get_video_frame(const FFPlayer *p)
 {
     if (!p || !p->is)
-        return;
-    stream_display(p->is, p->video_renderer);
+        return NULL;
+    return stream_get_video_frame(p->is);
+}
+
+AVSubtitle *ffplayer_get_subtitle(const FFPlayer *p)
+{
+    if (!p || !p->is)
+        return NULL;
+    return stream_get_subtitle(p->is);
+}
+
+int ffplayer_get_video_size(const FFPlayer *p, int *width, int *height, AVRational *sar)
+{
+    if (!p || !p->is)
+        return -1;
+    return stream_get_video_size(p->is, width, height, sar);
+}
+
+enum FFPlayerShowMode ffplayer_get_show_mode(const FFPlayer *p)
+{
+    if (!p || !p->is)
+        return FFPLAYER_SHOW_MODE_NONE;
+    return (enum FFPlayerShowMode)stream_get_show_mode(p->is);
+}
+
+AudioVisualizer *ffplayer_get_audio_visualizer(const FFPlayer *p)
+{
+    if (!p || !p->is)
+        return NULL;
+    return stream_get_audio_visualizer(p->is);
 }
 
 /* -- Window events ------------------------------ */
@@ -261,6 +299,13 @@ void ffplayer_handle_window_size_changed(FFPlayer *p, int width, int height)
     stream_handle_window_size_changed(p->is, width, height);
 }
 
+void ffplayer_set_window_size(FFPlayer *p, int width, int height)
+{
+    if (!p || !p->is)
+        return;
+    stream_set_window_size(p->is, width, height);
+}
+
 void ffplayer_request_refresh(FFPlayer *p)
 {
     if (!p || !p->is)
@@ -268,9 +313,24 @@ void ffplayer_request_refresh(FFPlayer *p)
     stream_request_refresh(p->is);
 }
 
-int ffplayer_is_renderer_open(const FFPlayer *p)
+int ffplayer_is_video_open(const FFPlayer *p)
 {
     if (!p || !p->is)
         return 0;
     return stream_is_video_open(p->is);
+}
+
+void ffplayer_set_renderer_info(FFPlayer *p, const void *renderer_info)
+{
+    if (!p || !renderer_info)
+        return;
+    memcpy(&p->renderer_info, renderer_info, sizeof(p->renderer_info));
+}
+
+void ffplayer_set_frame_size_callback(FFPlayer *p, ffplayer_frame_size_cb cb, void *opaque)
+{
+    if (!p)
+        return;
+    p->frame_size_cb = cb;
+    p->frame_size_opaque = opaque;
 }

@@ -11,7 +11,6 @@
 #include "clock.h"
 #include "demuxer.h"
 #include "filter.h"
-#include "video_renderer.h"
 #include "video_state.h"
 #include "video_thread.h"
 #include "packet_queue.h"
@@ -36,7 +35,7 @@ static int queue_picture(VideoState *is, AVFrame *src_frame, double pts, double 
     vp->serial = serial;
 
     if (is->on_frame_size_changed)
-        is->on_frame_size_changed(is, vp->width, vp->height, vp->sar);
+        is->on_frame_size_changed(is->frame_size_opaque, vp->width, vp->height, vp->sar);
 
     av_frame_move_ref(vp->frame, src_frame);
     frame_queue_push(is->pictq);
@@ -77,7 +76,7 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
 int video_thread(void *arg)
 {
     VideoState *is = (VideoState *)arg;
-    const SDL_RendererInfo *renderer_info = video_renderer_get_info(is->video_renderer);
+    const SDL_RendererInfo *renderer_info = &is->renderer_info;
     AVFrame *frame = av_frame_alloc();
     double pts;
     double duration;

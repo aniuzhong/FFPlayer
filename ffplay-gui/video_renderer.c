@@ -6,7 +6,6 @@
 #include <libavutil/mathematics.h>
 #include <libavutil/pixdesc.h>
 
-#include "frame_queue.h"
 #include "video_renderer.h"
 
 #define USE_ONEPASS_SUBTITLE_RENDER 1
@@ -201,78 +200,72 @@ static void draw_video_background(VideoRenderer *vr)
     }
 }
 
-static void video_image_display(VideoRenderer *vr, Frame *vp, Frame *sp, int xleft, int ytop, int width, int height)
+static void video_image_display(VideoRenderer *vr, AVFrame *frame, AVSubtitle *subtitle,
+                                int xleft, int ytop, int width, int height)
 {
     SDL_Rect *rect = &vr->render_params.target_rect;
 
-    calculate_display_rect(rect, xleft, ytop, width, height, vp->width, vp->height, vp->sar);
+    calculate_display_rect(rect, xleft, ytop, width, height,
+                           frame->width, frame->height, frame->sample_aspect_ratio);
 
-    if (sp) {
-        if (vp->pts >= sp->pts + ((float) sp->sub.start_display_time / 1000)) {
-            if (!sp->uploaded) {
-                uint8_t* pixels[4];
-                int pitch[4];
-                int i;
-                if (!sp->width || !sp->height) {
-                    sp->width = vp->width;
-                    sp->height = vp->height;
-                }
-                if (realloc_texture(vr->renderer, &vr->sub_texture, SDL_PIXELFORMAT_ARGB8888, sp->width, sp->height, SDL_BLENDMODE_BLEND, 1) < 0)
-                    return;
+    if (subtitle && subtitle->num_rects > 0) {
+        int sub_w = frame->width;
+        int sub_h = frame->height;
+        int i;
+        if (realloc_texture(vr->renderer, &vr->sub_texture, SDL_PIXELFORMAT_ARGB8888,
+                            sub_w, sub_h, SDL_BLENDMODE_BLEND, 1) < 0)
+            return;
 
-                for (i = 0; i < sp->sub.num_rects; i++) {
-                    AVSubtitleRect *sub_rect = sp->sub.rects[i];
+        for (i = 0; i < subtitle->num_rects; i++) {
+            AVSubtitleRect *sub_rect = subtitle->rects[i];
+            uint8_t *pixels[4];
+            int pitch[4];
 
-                    sub_rect->x = av_clip(sub_rect->x, 0, sp->width );
-                    sub_rect->y = av_clip(sub_rect->y, 0, sp->height);
-                    sub_rect->w = av_clip(sub_rect->w, 0, sp->width  - sub_rect->x);
-                    sub_rect->h = av_clip(sub_rect->h, 0, sp->height - sub_rect->y);
+            sub_rect->x = av_clip(sub_rect->x, 0, sub_w);
+            sub_rect->y = av_clip(sub_rect->y, 0, sub_h);
+            sub_rect->w = av_clip(sub_rect->w, 0, sub_w - sub_rect->x);
+            sub_rect->h = av_clip(sub_rect->h, 0, sub_h - sub_rect->y);
 
-                    vr->sub_convert_ctx = sws_getCachedContext(vr->sub_convert_ctx,
-                        sub_rect->w, sub_rect->h, AV_PIX_FMT_PAL8,
-                        sub_rect->w, sub_rect->h, AV_PIX_FMT_BGRA,
-                        0, NULL, NULL, NULL);
-                    if (!vr->sub_convert_ctx) {
-                        av_log(NULL, AV_LOG_FATAL, "Cannot initialize the conversion context\n");
-                        return;
-                    }
-                    if (!SDL_LockTexture(vr->sub_texture, (SDL_Rect *)sub_rect, (void **)pixels, pitch)) {
-                        sws_scale(vr->sub_convert_ctx, (const uint8_t * const *)sub_rect->data, sub_rect->linesize,
-                                  0, sub_rect->h, pixels, pitch);
-                        SDL_UnlockTexture(vr->sub_texture);
-                    }
-                }
-                sp->uploaded = 1;
+            vr->sub_convert_ctx = sws_getCachedContext(vr->sub_convert_ctx,
+                sub_rect->w, sub_rect->h, AV_PIX_FMT_PAL8,
+                sub_rect->w, sub_rect->h, AV_PIX_FMT_BGRA,
+                0, NULL, NULL, NULL);
+            if (!vr->sub_convert_ctx) {
+                av_log(NULL, AV_LOG_FATAL, "Cannot initialize the conversion context\n");
+                return;
             }
-        } else {
-            sp = NULL;
+            if (!SDL_LockTexture(vr->sub_texture, (SDL_Rect *)sub_rect, (void **)pixels, pitch)) {
+                sws_scale(vr->sub_convert_ctx, (const uint8_t * const *)sub_rect->data, sub_rect->linesize,
+                          0, sub_rect->h, pixels, pitch);
+                SDL_UnlockTexture(vr->sub_texture);
+            }
         }
     }
 
-    set_sdl_yuv_conversion_mode(vp->frame);
+    set_sdl_yuv_conversion_mode(frame);
 
-    if (!vp->uploaded) {
-        if (upload_texture(vr->renderer, &vr->vid_texture, vp->frame) < 0) {
+    if (vr->last_vid_data != frame->data[0]) {
+        if (upload_texture(vr->renderer, &vr->vid_texture, frame) < 0) {
             set_sdl_yuv_conversion_mode(NULL);
             return;
         }
-        vp->uploaded = 1;
-        vp->flip_v = vp->frame->linesize[0] < 0;
+        vr->last_vid_data = frame->data[0];
+        vr->last_flip_v = frame->linesize[0] < 0;
     }
 
     draw_video_background(vr);
     SDL_RenderCopyEx(vr->renderer, vr->vid_texture, NULL, rect, 0, NULL,
-                     vp->flip_v ? SDL_FLIP_VERTICAL : SDL_FLIP_NONE);
+                     vr->last_flip_v ? SDL_FLIP_VERTICAL : SDL_FLIP_NONE);
     set_sdl_yuv_conversion_mode(NULL);
-    if (sp) {
+    if (subtitle && subtitle->num_rects > 0) {
 #if USE_ONEPASS_SUBTITLE_RENDER
         SDL_RenderCopy(vr->renderer, vr->sub_texture, NULL, rect);
 #else
         int i;
-        double xratio = (double)rect->w / (double)sp->width;
-        double yratio = (double)rect->h / (double)sp->height;
-        for (i = 0; i < sp->sub.num_rects; i++) {
-            SDL_Rect *sub_rect = (SDL_Rect*)sp->sub.rects[i];
+        double xratio = (double)rect->w / (double)frame->width;
+        double yratio = (double)rect->h / (double)frame->height;
+        for (i = 0; i < subtitle->num_rects; i++) {
+            SDL_Rect *sub_rect = (SDL_Rect*)subtitle->rects[i];
             SDL_Rect target;
             target.x = (int)(rect->x + sub_rect->x * xratio);
             target.y = (int)(rect->y + sub_rect->y * yratio);
@@ -317,11 +310,11 @@ int video_renderer_open(VideoRenderer *vr, int *width, int *height)
     return 0;
 }
 
-void video_renderer_draw_video(VideoRenderer *vr, Frame *vp, Frame *sp, int xleft, int ytop, int width, int height)
+void video_renderer_draw_video(VideoRenderer *vr, AVFrame *frame, AVSubtitle *subtitle, int xleft, int ytop, int width, int height)
 {
-    if (!vp)
+    if (!frame)
         return;
-    video_image_display(vr, vp, sp, xleft, ytop, width, height);
+    video_image_display(vr, frame, subtitle, xleft, ytop, width, height);
 }
 
 void video_renderer_clear(VideoRenderer *vr)
@@ -337,15 +330,18 @@ void video_renderer_present(VideoRenderer *vr)
     SDL_RenderPresent(vr->renderer);
 }
 
-void video_renderer_flush_sub_rect(VideoRenderer *vr, const SDL_Rect *rect)
+void video_renderer_cleanup_textures(VideoRenderer *vr)
 {
-    uint8_t *pixels;
-    int pitch, j;
-    if (!vr || !vr->sub_texture || !rect)
+    if (!vr)
         return;
-    if (!SDL_LockTexture(vr->sub_texture, rect, (void **)&pixels, &pitch)) {
-        for (j = 0; j < rect->h; j++, pixels += pitch)
-            memset(pixels, 0, rect->w << 2);
-        SDL_UnlockTexture(vr->sub_texture);
-    }
+    sws_freeContext(vr->sub_convert_ctx);
+    vr->sub_convert_ctx = NULL;
+    if (vr->vid_texture)
+        SDL_DestroyTexture(vr->vid_texture);
+    vr->vid_texture = NULL;
+    if (vr->sub_texture)
+        SDL_DestroyTexture(vr->sub_texture);
+    vr->sub_texture = NULL;
+    vr->last_vid_data = NULL;
+    vr->last_flip_v = 0;
 }

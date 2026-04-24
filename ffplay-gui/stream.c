@@ -13,7 +13,6 @@
 #include "demuxer.h"
 #include "read_thread.h"
 #include "filter.h"
-#include "video_renderer.h"
 #include "audio_thread.h"
 #include "video_thread.h"
 #include "subtitle_thread.h"
@@ -96,7 +95,6 @@ void stream_refresh(VideoState *is, double *remaining_time)
 {
     double time;
     Frame *sp, *sp2;
-    VideoRenderer *vr = is->video_renderer;
 
     if (!is->paused && av_sync_is_external_clock_master(&is->av_sync) &&
         demuxer_is_realtime(is->demuxer))
@@ -105,8 +103,6 @@ void stream_refresh(VideoState *is, double *remaining_time)
     if (is->show_mode != SHOW_MODE_VIDEO && is->audio_st && is->audio_visualizer) {
         time = av_gettime_relative() / 1000000.0;
         if (is->force_refresh || is->audio_visualizer->last_vis_time + is->audio_visualizer->rdftspeed < time) {
-            video_renderer_clear(vr);
-            audio_visualizer_render(is->audio_visualizer, vr->renderer, is->xleft, is->ytop, is->width, is->height);
             is->audio_visualizer->last_vis_time = time;
         }
         *remaining_time = FFMIN(*remaining_time, is->audio_visualizer->last_vis_time + is->audio_visualizer->rdftspeed - time);
@@ -170,13 +166,6 @@ retry:
                     if (sp->serial != packet_queue_get_serial(is->subtitleq)
                             || (clock_get_pts(is->vidclk) > (sp->pts + ((float) sp->sub.end_display_time / 1000)))
                             || (sp2 && clock_get_pts(is->vidclk) > (sp2->pts + ((float) sp2->sub.start_display_time / 1000)))) {
-                        if (sp->uploaded) {
-                            int i;
-                            for (i = 0; i < sp->sub.num_rects; i++) {
-                                AVSubtitleRect *sub_rect = sp->sub.rects[i];
-                                video_renderer_flush_sub_rect(vr, (SDL_Rect *)sub_rect);
-                            }
-                        }
                         frame_queue_next(is->subpq);
                     } else {
                         break;
@@ -191,12 +180,7 @@ retry:
                 stream_toggle_pause(is);
         }
 display:
-        if (is->force_refresh && is->show_mode == SHOW_MODE_VIDEO && frame_queue_is_last_shown(is->pictq)) {
-            Frame *vp = frame_queue_peek_last(is->pictq);
-            Frame *sp = (is->subtitle_st && frame_queue_nb_remaining(is->subpq) > 0) ? frame_queue_peek(is->subpq) : NULL;
-            video_renderer_clear(vr);
-            video_renderer_draw_video(vr, vp, sp, is->xleft, is->ytop, is->width, is->height);
-        }
+        ;
     }
     is->force_refresh = 0;
 }
@@ -206,27 +190,6 @@ void stream_request_refresh(VideoState *is)
     if (!is)
         return;
     is->force_refresh = 1;
-}
-
-void stream_display(VideoState *is, VideoRenderer *vr)
-{
-    if (!is || !vr)
-        return;
-
-    if (!is->width) {
-        video_renderer_open(vr, &is->width, &is->height);
-        if (is->on_video_open)
-            is->on_video_open(is);
-    }
-
-    video_renderer_clear(vr);
-    if (is->audio_st && is->show_mode != SHOW_MODE_VIDEO)
-        audio_visualizer_render(is->audio_visualizer, vr->renderer, is->xleft, is->ytop, is->width, is->height);
-    else if (is->video_st) {
-        Frame *vp = frame_queue_peek_last(is->pictq);
-        Frame *sp = (is->subtitle_st && frame_queue_nb_remaining(is->subpq) > 0) ? frame_queue_peek(is->subpq) : NULL;
-        video_renderer_draw_video(vr, vp, sp, is->xleft, is->ytop, is->width, is->height);
-    }
 }
 
 /* -- Accessors ---------------------------------- */
@@ -493,29 +456,15 @@ void stream_seek_relative(VideoState *is, double incr_seconds)
     }
 }
 
-static void stream_on_video_open(VideoState *is)
-{
-    if (!is || !is->video_renderer)
-        return;
-    SDL_SetWindowPosition(is->video_renderer->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
-    SDL_ShowWindow(is->video_renderer->window);
-}
-
-static void stream_on_frame_size_changed(VideoState *is, int width, int height, AVRational sar)
-{
-    if (!is || !is->video_renderer)
-        return;
-    video_renderer_set_default_window_size(is->video_renderer, is->width, is->height, width, height, sar);
-}
-
 VideoState *stream_open(const char *filename,
                         AudioDevice *audio_device,
-                        VideoRenderer *video_renderer,
-                        void (*frame_size_changed_cb)(VideoState *is, int width, int height, AVRational sar))
+                        const SDL_RendererInfo *renderer_info,
+                        void (*frame_size_changed_cb)(void *opaque, int width, int height, AVRational sar),
+                        void *frame_size_opaque)
 {
     VideoState *is;
 
-    if (!filename || !audio_device || !video_renderer)
+    if (!filename || !audio_device || !renderer_info)
         return NULL;
 
     is = av_mallocz(sizeof(VideoState));
@@ -531,9 +480,9 @@ VideoState *stream_open(const char *filename,
     is->xleft   = 0;
     is->audio_device = audio_device;
     audio_device_set_open_cb(audio_device, audio_pipeline_open);
-    is->video_renderer = video_renderer;
-    is->on_video_open = stream_on_video_open;
-    is->on_frame_size_changed = frame_size_changed_cb ? frame_size_changed_cb : stream_on_frame_size_changed;
+    is->renderer_info = *renderer_info;
+    is->on_frame_size_changed = frame_size_changed_cb;
+    is->frame_size_opaque = frame_size_opaque;
     is->on_step_frame = stream_step;
 
     is->videoq = packet_queue_create();
@@ -808,12 +757,6 @@ void stream_close(VideoState *is)
     if (frame_queue_is_initialized(is->subpq))
         frame_queue_free(&is->subpq);
     audio_visualizer_free(&is->audio_visualizer);
-    sws_freeContext(is->video_renderer->sub_convert_ctx);
-    is->video_renderer->sub_convert_ctx = NULL;
-    if (is->video_renderer->vid_texture)
-        SDL_DestroyTexture(is->video_renderer->vid_texture);
-    if (is->video_renderer->sub_texture)
-        SDL_DestroyTexture(is->video_renderer->sub_texture);
     audio_pipeline_free(&is->audio_pipeline);
     clock_destroy(&is->audclk);
     clock_destroy(&is->vidclk);
@@ -899,4 +842,68 @@ the_end:
 
     stream_component_close(is, old_index);
     stream_component_open(is, stream_index);
+}
+
+/* -- Frame access (pull-based) ------------------ */
+
+AudioVisualizer *stream_get_audio_visualizer(const VideoState *is)
+{
+    return is ? is->audio_visualizer : NULL;
+}
+
+AVFrame *stream_get_video_frame(const VideoState *is)
+{
+    if (!is || !is->video_st)
+        return NULL;
+    if (!frame_queue_is_last_shown(is->pictq))
+        return NULL;
+    Frame *vp = frame_queue_peek_last(is->pictq);
+    return vp ? vp->frame : NULL;
+}
+
+AVSubtitle *stream_get_subtitle(const VideoState *is)
+{
+    Frame *vp, *sp;
+    if (!is || !is->subtitle_st || !is->video_st)
+        return NULL;
+    if (frame_queue_nb_remaining(is->subpq) <= 0)
+        return NULL;
+    if (!frame_queue_is_last_shown(is->pictq))
+        return NULL;
+    vp = frame_queue_peek_last(is->pictq);
+    sp = frame_queue_peek(is->subpq);
+    if (vp->pts >= sp->pts + ((float) sp->sub.start_display_time / 1000))
+        return &sp->sub;
+    return NULL;
+}
+
+int stream_get_video_size(const VideoState *is, int *width, int *height, AVRational *sar)
+{
+    Frame *vp;
+    if (!is || !is->video_st)
+        return -1;
+    if (!frame_queue_is_last_shown(is->pictq))
+        return -1;
+    vp = frame_queue_peek_last(is->pictq);
+    if (!vp || !vp->width || !vp->height)
+        return -1;
+    if (width)  *width  = vp->width;
+    if (height) *height = vp->height;
+    if (sar)    *sar    = vp->sar;
+    return 0;
+}
+
+int stream_get_show_mode(const VideoState *is)
+{
+    if (!is)
+        return -1;
+    return (int)is->show_mode;
+}
+
+void stream_set_window_size(VideoState *is, int width, int height)
+{
+    if (!is)
+        return;
+    is->width  = width;
+    is->height = height;
 }
