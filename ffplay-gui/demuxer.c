@@ -162,6 +162,7 @@ const char *demuxer_get_input_name(const Demuxer *demuxer)
  */
 AVFormatContext *demuxer_get_ic(const Demuxer *demuxer)
 {
+    /* TODO Consider a better wrapper instead of direct access to demuxer->ic */
     if (!demuxer)
         return NULL;
     return demuxer->ic;

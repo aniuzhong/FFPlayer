@@ -193,6 +193,8 @@ int read_thread(void *arg)
         ret = AVERROR(ENOMEM);
         goto fail;
     }
+
+    /* TODO Move avformat_alloc_context() to demuxer */
     ic = avformat_alloc_context();
     if (!ic) {
         av_log(NULL, AV_LOG_FATAL, "Could not allocate context.\n");
@@ -213,6 +215,7 @@ int read_thread(void *arg)
     }
     demuxer_set_ic(demuxer, ic);
 
+    /* TODO: Move avformat_find_stream_info() to demuxer */
     err = avformat_find_stream_info(ic, NULL);
 
     if (err < 0) {

@@ -5,10 +5,7 @@
 extern "C" {
 #endif
 
-typedef struct VideoState VideoState;
-
 int read_thread(void *arg);
-int find_stream_components(VideoState *is);
 
 #ifdef __cplusplus
 }
