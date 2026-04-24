@@ -1,9 +1,10 @@
 #include <errno.h>
 #include <string.h>
 
+#include <SDL_thread.h>
+
 #include <libavutil/error.h>
 #include <libavutil/mem.h>
-#include <SDL_thread.h>
 
 #include "demuxer.h"
 

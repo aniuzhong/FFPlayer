@@ -558,8 +558,6 @@ int stream_has_enough_packets(AVStream *st, int stream_id, PacketQueue *queue)
            (!duration || av_q2d(st->time_base) * duration > 1.0);
 }
 
-
-
 int stream_component_open(VideoState *is, int stream_index)
 {
     AVFormatContext *ic;

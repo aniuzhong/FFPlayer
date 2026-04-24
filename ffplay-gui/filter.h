@@ -11,6 +11,7 @@
 extern "C" {
 #endif
 
+/* TODO Use pixel format instead of SDL_RendererInfo */
 int configure_video_filters(AVFilterGraph *graph,
                             AVFormatContext *ic,
                             AVStream *video_st,
