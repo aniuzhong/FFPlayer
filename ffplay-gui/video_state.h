@@ -1,9 +1,6 @@
 #ifndef FFPLAY_GUI_VIDEO_STATE_H
 #define FFPLAY_GUI_VIDEO_STATE_H
 
-#include <SDL.h>
-#include <SDL_thread.h>
-
 #include <libswscale/swscale.h>
 #include <libavformat/avformat.h>
 #include <libavfilter/avfilter.h>

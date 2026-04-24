@@ -1,6 +1,8 @@
 #include <math.h>
 #include <stdio.h>
 
+#include <SDL.h>
+
 #include <libavutil/bprint.h>
 #include <libavutil/display.h>
 #include <libavutil/mem.h>

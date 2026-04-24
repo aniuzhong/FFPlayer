@@ -68,8 +68,7 @@ AudioPipeline *audio_pipeline_create(void);
 void audio_pipeline_free(AudioPipeline **ap);
 
 void audio_pipeline_bind(AudioPipeline *ap, AvSync *av_sync, FrameQueue *sampq,
-                          PacketQueue *audioq, AudioDevice *audio_device,
-                          int *paused, int *show_mode);
+                         PacketQueue *audioq, AudioDevice *audio_device, int *paused, int *show_mode);
 
 int audio_pipeline_open(void *opaque, AVChannelLayout *wanted_channel_layout,
                          int wanted_sample_rate, struct AudioParams *audio_hw_params);

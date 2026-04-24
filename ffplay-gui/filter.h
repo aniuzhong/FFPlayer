@@ -1,8 +1,6 @@
 #ifndef FFPLAY_GUI_FILTER_H
 #define FFPLAY_GUI_FILTER_H
 
-#include <SDL.h>
-
 #include <libavfilter/avfilter.h>
 #include <libavformat/avformat.h>
 #include <libavutil/frame.h>

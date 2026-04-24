@@ -312,6 +312,8 @@ fail:
         avformat_close_input(&ic);
 
     av_packet_free(&pkt);
+
+    /* TODO Do not use SDL_PushEvent() to notify quit event */
     if (ret != 0) {
         SDL_Event event;
         event.type = FF_QUIT_EVENT;
