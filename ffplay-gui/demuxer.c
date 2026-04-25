@@ -179,7 +179,7 @@ const char *demuxer_get_input_name(const Demuxer *demuxer)
 /**
  * Get AVFormatContext.
  */
-AVFormatContext *demuxer_get_ic(const Demuxer *demuxer)
+AVFormatContext *demuxer_get_format_context(const Demuxer *demuxer)
 {
     /* TODO Consider a better wrapper instead of direct access to demuxer->ic */
     if (!demuxer)

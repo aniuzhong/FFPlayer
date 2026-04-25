@@ -55,7 +55,7 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
         if (frame->pts != AV_NOPTS_VALUE)
             dpts = av_q2d(is->video_st->time_base) * frame->pts;
 
-        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(demuxer_get_ic(is->demuxer), is->video_st, frame);
+        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(demuxer_get_format_context(is->demuxer), is->video_st, frame);
 
         if (frame->pts != AV_NOPTS_VALUE &&
             av_sync_should_early_drop(&is->av_sync,
@@ -82,7 +82,7 @@ int video_thread(void *arg)
     double duration;
     int ret;
     AVRational tb = is->video_st->time_base;
-    AVRational frame_rate = av_guess_frame_rate(demuxer_get_ic(is->demuxer), is->video_st, NULL);
+    AVRational frame_rate = av_guess_frame_rate(demuxer_get_format_context(is->demuxer), is->video_st, NULL);
 
     AVFilterGraph *graph = NULL;
     AVFilterContext *filt_out = NULL, *filt_in = NULL;
@@ -123,7 +123,7 @@ int video_thread(void *arg)
                 ret = AVERROR(EINVAL);
                 goto the_end;
             }
-            if ((ret = configure_video_filters(graph, demuxer_get_ic(is->demuxer), is->video_st, NULL, frame, renderer_info, &is->in_video_filter, &is->out_video_filter)) < 0) {
+            if ((ret = configure_video_filters(graph, demuxer_get_format_context(is->demuxer), is->video_st, NULL, frame, renderer_info, &is->in_video_filter, &is->out_video_filter)) < 0) {
                 is->quit_request = 1;
                 goto the_end;
             }

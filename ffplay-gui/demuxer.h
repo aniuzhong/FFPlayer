@@ -32,7 +32,7 @@ void demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode);
 const char *demuxer_get_input_name(const Demuxer *demuxer);
 
 /* State accessors - format context */
-AVFormatContext *demuxer_get_ic(const Demuxer *demuxer);
+AVFormatContext *demuxer_get_format_context(const Demuxer *demuxer);
 void demuxer_set_ic(Demuxer *demuxer, AVFormatContext *ic);
 
 /* State accessors - realtime */

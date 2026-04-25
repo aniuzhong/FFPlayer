@@ -232,7 +232,7 @@ void stream_seek_to_ratio(VideoState *is, float ratio)
     AVFormatContext *ic;
     if (!is)
         return;
-    ic = demuxer_get_ic(is->demuxer);
+    ic = demuxer_get_format_context(is->demuxer);
     if (!ic)
         return;
     ratio = av_clipf(ratio, 0.0f, 1.0f);
@@ -260,7 +260,7 @@ double stream_get_position(const VideoState *is)
     pos = get_master_clock(&is->av_sync);
     if (isnan(pos))
         return 0.0;
-    ic = demuxer_get_ic(is->demuxer);
+    ic = demuxer_get_format_context(is->demuxer);
     if (ic && ic->start_time != AV_NOPTS_VALUE)
         pos -= ic->start_time / (double)AV_TIME_BASE;
     return pos > 0.0 ? pos : 0.0;
@@ -271,7 +271,7 @@ double stream_get_duration(const VideoState *is)
     AVFormatContext *ic;
     if (!is)
         return -1.0;
-    ic = demuxer_get_ic(is->demuxer);
+    ic = demuxer_get_format_context(is->demuxer);
     if (!ic || ic->duration <= 0)
         return -1.0;
     return ic->duration / (double)AV_TIME_BASE;
@@ -296,7 +296,7 @@ int stream_has_chapters(const VideoState *is)
     AVFormatContext *ic;
     if (!is)
         return 0;
-    ic = demuxer_get_ic(is->demuxer);
+    ic = demuxer_get_format_context(is->demuxer);
     return ic && ic->nb_chapters > 1;
 }
 
@@ -312,7 +312,7 @@ int stream_can_seek(const VideoState *is)
     AVFormatContext *ic;
     if (!is)
         return 0;
-    ic = demuxer_get_ic(is->demuxer);
+    ic = demuxer_get_format_context(is->demuxer);
     if (!ic)
         return 0;
     if (ic->duration > 0)
@@ -326,7 +326,7 @@ float stream_get_byte_progress(const VideoState *is)
     int64_t size, pos;
     if (!is)
         return -1.0f;
-    ic = demuxer_get_ic(is->demuxer);
+    ic = demuxer_get_format_context(is->demuxer);
     if (!ic || !ic->pb)
         return -1.0f;
     size = avio_size(ic->pb);
@@ -398,7 +398,7 @@ void stream_seek_chapter(VideoState *is, int incr)
 
     if (!is)
         return;
-    ic = demuxer_get_ic(is->demuxer);
+    ic = demuxer_get_format_context(is->demuxer);
     if (!ic || !ic->nb_chapters)
         return;
 
@@ -430,7 +430,7 @@ void stream_seek_relative(VideoState *is, double incr_seconds)
 
     if (!is)
         return;
-    ic = demuxer_get_ic(is->demuxer);
+    ic = demuxer_get_format_context(is->demuxer);
     if (!ic)
         return;
 
@@ -570,7 +570,7 @@ int stream_component_open(VideoState *is, int stream_index)
     AVChannelLayout ch_layout = { 0 };
     int ret = 0;
     
-    ic = demuxer_get_ic(is->demuxer);
+    ic = demuxer_get_format_context(is->demuxer);
     if (!ic || stream_index < 0 || stream_index >= ic->nb_streams)
         return -1;
 
@@ -691,7 +691,7 @@ void stream_component_close(VideoState *is, int stream_index)
     AVFormatContext *ic;
     AVCodecParameters *codecpar;
 
-    ic = demuxer_get_ic(is->demuxer);
+    ic = demuxer_get_format_context(is->demuxer);
     if (!ic || stream_index < 0 || stream_index >= ic->nb_streams)
         return;
     codecpar = ic->streams[stream_index]->codecpar;
@@ -780,7 +780,7 @@ void stream_cycle_channel(VideoState *is, int codec_type)
     AVProgram *p = NULL;
     int nb_streams;
 
-    ic = demuxer_get_ic(is->demuxer);
+    ic = demuxer_get_format_context(is->demuxer);
     if (!ic)
         return;
     nb_streams = ic->nb_streams;

@@ -21,7 +21,7 @@ static void print_error(const char *filename, int err)
 static int find_stream_components(VideoState *is)
 {
     // TODO Move find_stream_components to Demuxer and keep open_stream_component in read_thread.c
-    AVFormatContext *ic = demuxer_get_ic(is->demuxer);
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
     int st_index[AVMEDIA_TYPE_NB];
     int i, ret = -1;
 
@@ -90,7 +90,7 @@ static int find_stream_components(VideoState *is)
 /* handle pause and resume for the stream */
 static void handle_pause_resume(VideoState *is)
 {
-    AVFormatContext *ic = demuxer_get_ic(is->demuxer);
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
     if (is->paused != is->last_paused) {
         is->last_paused = is->paused;
         if (is->paused)
@@ -112,7 +112,7 @@ static int handle_seek_request(VideoState *is)
     int64_t seek_min    = is->seek_rel > 0 ? seek_target - is->seek_rel + 2: INT64_MIN;
     int64_t seek_max    = is->seek_rel < 0 ? seek_target - is->seek_rel - 2: INT64_MAX;
 
-    int ret = avformat_seek_file(demuxer_get_ic(demuxer), -1, seek_min, seek_target, seek_max, is->seek_flags);
+    int ret = avformat_seek_file(demuxer_get_format_context(demuxer), -1, seek_min, seek_target, seek_max, is->seek_flags);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "%s: error while seeking\n", demuxer_get_input_name(demuxer));
     } else {
@@ -185,8 +185,10 @@ int read_thread(void *arg)
         goto fail;
     }
 
-    AVFormatContext *ic = demuxer_get_ic(is->demuxer);
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
+
     demuxer_set_eof(is->demuxer, 0);
+
     AVDictionary *open_opts = NULL;
     if (!av_dict_get(open_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
         av_dict_set(&open_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
@@ -300,7 +302,7 @@ int read_thread(void *arg)
     ret = 0;
 fail:
     /* TODO Move avformat_close_input to Demuxer */
-    if (ic && !demuxer_get_ic(is->demuxer))
+    if (ic && !demuxer_get_format_context(is->demuxer))
         avformat_close_input(&ic);
 
     av_packet_free(&pkt);
