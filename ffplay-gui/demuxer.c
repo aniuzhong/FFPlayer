@@ -128,6 +128,97 @@ void demuxer_set_eof(Demuxer *demuxer, int eof)
     demuxer->eof = eof;
 }
 
+void demuxer_notify_continue_read(Demuxer *demuxer)
+{
+    if (demuxer && demuxer->continue_read_thread) {
+        SDL_CondSignal(demuxer->continue_read_thread);
+    }
+}
+
+void demuxer_request_abort(Demuxer *demuxer)
+{
+    if (!demuxer)
+        return;
+    demuxer->abort_request = 1;
+}
+
+int demuxer_is_aborted(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0;
+    return demuxer->abort_request;
+}
+
+int demuxer_get_seek_mode(const Demuxer *demuxer)
+{
+    if (!demuxer || demuxer->seek_mode < 0)
+        return 0;
+    return demuxer->seek_mode;
+}
+
+void demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode)
+{
+    if (!demuxer)
+        return;
+    demuxer->seek_mode = seek_mode;
+}
+
+double demuxer_get_max_frame_duration(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0.0;
+    return demuxer->max_frame_duration;
+}
+
+void demuxer_set_max_frame_duration(Demuxer *demuxer, double max_frame_duration)
+{
+    if (!demuxer)
+        return;
+    demuxer->max_frame_duration = max_frame_duration;
+}
+
+double *demuxer_get_max_frame_duration_ptr(Demuxer *demuxer)
+{
+    if (!demuxer)
+        return NULL;
+    return &demuxer->max_frame_duration;
+}
+
+SDL_cond *demuxer_get_continue_read_thread(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return NULL;
+    return demuxer->continue_read_thread;
+}
+
+int demuxer_get_queue_attachments_req(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0;
+    return demuxer->queue_attachments_req;
+}
+
+void demuxer_set_queue_attachments_req(Demuxer *demuxer, int req)
+{
+    if (!demuxer)
+        return;
+    demuxer->queue_attachments_req = req;
+}
+
+int demuxer_get_read_pause_return(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0;
+    return demuxer->read_pause_return;
+}
+
+void demuxer_set_read_pause_return(Demuxer *demuxer, int ret)
+{
+    if (!demuxer)
+        return;
+    demuxer->read_pause_return = ret;
+}
+
 int demuxer_open_input(Demuxer *demuxer, AVDictionary **options)
 {
     AVDictionary *open_opts = NULL;
@@ -255,6 +346,23 @@ int demuxer_get_stream_index(const Demuxer *d, enum AVMediaType type)
     return d->st_index[type];
 }
 
+int demuxer_is_realtime_network_protocol(Demuxer* d)
+{
+    AVFormatContext *ic = d->ic;
+    const char *name = demuxer_get_input_name(d);
+
+    // Check for RTSP (Real Time Streaming Protocol)
+    if (ic->iformat && !strcmp(ic->iformat->name, "rtsp")) {
+        return 1;
+    }
+
+    // Check for MMSH (Microsoft Media Server over HTTP)
+    if (ic->pb && name && !strncmp(name, "mmsh:", 5)) {
+        return 1;
+    }
+    return 0;
+}
+
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
 {
     if (!demuxer || !read_thread_fn)
@@ -265,9 +373,6 @@ int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
     return 0;
 }
 
-/**
- * Stop the read thread.
- */
 void demuxer_stop(Demuxer *demuxer)
 {
     if (!demuxer)
@@ -277,128 +382,3 @@ void demuxer_stop(Demuxer *demuxer)
         demuxer->read_tid = NULL;
     }
 }
-
-/**
- * Signal the read thread to continue.
- */
-void demuxer_notify_continue_read(Demuxer *demuxer)
-{
-    if (demuxer && demuxer->continue_read_thread) {
-        SDL_CondSignal(demuxer->continue_read_thread);
-    }
-}
-
-/**
- * Request abort of the demuxer.
- */
-void demuxer_request_abort(Demuxer *demuxer)
-{
-    if (!demuxer)
-        return;
-    demuxer->abort_request = 1;
-}
-
-/**
- * Check if abort is requested.
- */
-int demuxer_is_aborted(const Demuxer *demuxer)
-{
-    if (!demuxer)
-        return 0;
-    return demuxer->abort_request;
-}
-
-int demuxer_get_seek_mode(const Demuxer *demuxer)
-{
-    if (!demuxer || demuxer->seek_mode < 0)
-        return 0;
-    return demuxer->seek_mode;
-}
-
-void demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode)
-{
-    if (!demuxer)
-        return;
-    demuxer->seek_mode = seek_mode;
-}
-
-/**
- * Get max frame duration.
- */
-double demuxer_get_max_frame_duration(const Demuxer *demuxer)
-{
-    if (!demuxer)
-        return 0.0;
-    return demuxer->max_frame_duration;
-}
-
-/**
- * Set max frame duration.
- */
-void demuxer_set_max_frame_duration(Demuxer *demuxer, double max_frame_duration)
-{
-    if (!demuxer)
-        return;
-    demuxer->max_frame_duration = max_frame_duration;
-}
-
-/**
- * Get pointer to max frame duration (for av_sync_bind).
- */
-double *demuxer_get_max_frame_duration_ptr(Demuxer *demuxer)
-{
-    if (!demuxer)
-        return NULL;
-    return &demuxer->max_frame_duration;
-}
-
-/**
- * Get continue read thread condition.
- */
-SDL_cond *demuxer_get_continue_read_thread(const Demuxer *demuxer)
-{
-    if (!demuxer)
-        return NULL;
-    return demuxer->continue_read_thread;
-}
-
-/**
- * Get queue attachments request flag.
- */
-int demuxer_get_queue_attachments_req(const Demuxer *demuxer)
-{
-    if (!demuxer)
-        return 0;
-    return demuxer->queue_attachments_req;
-}
-
-/**
- * Set queue attachments request flag.
- */
-void demuxer_set_queue_attachments_req(Demuxer *demuxer, int req)
-{
-    if (!demuxer)
-        return;
-    demuxer->queue_attachments_req = req;
-}
-
-/**
- * Get read pause return value.
- */
-int demuxer_get_read_pause_return(const Demuxer *demuxer)
-{
-    if (!demuxer)
-        return 0;
-    return demuxer->read_pause_return;
-}
-
-/**
- * Set read pause return value.
- */
-void demuxer_set_read_pause_return(Demuxer *demuxer, int ret)
-{
-    if (!demuxer)
-        return;
-    demuxer->read_pause_return = ret;
-}
-

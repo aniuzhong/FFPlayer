@@ -178,14 +178,10 @@ int read_thread(void *arg)
 
         handle_pause_resume(is);
 
-// #if CONFIG_RTSP_DEMUXER || CONFIG_MMSH_PROTOCOL
-        if (is->paused &&
-                (!strcmp(ic->iformat->name, "rtsp") ||
-                 (ic->pb && demuxer_get_input_name(is->demuxer) && !strncmp(demuxer_get_input_name(is->demuxer), "mmsh:", 5)))) {
+        if (is->paused && demuxer_is_realtime_network_protocol(is->demuxer)) {
             SDL_Delay(10);
             continue;
         }
-// #endif
 
         if (handle_seek_request(is) < 0) {
             ret = -1;

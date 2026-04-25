@@ -1,7 +1,6 @@
 #ifndef FFPLAY_GUI_DEMUXER_H
 #define FFPLAY_GUI_DEMUXER_H
 
-#include "libavutil/rational.h"
 #include <SDL_thread.h>
 
 #include <libavformat/avformat.h>
@@ -31,6 +30,16 @@ int              demuxer_is_eof(const Demuxer *demuxer);
 void             demuxer_set_eof(Demuxer *demuxer, int eof);
 int              demuxer_get_seek_mode(const Demuxer *demuxer);
 void             demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode);
+void             demuxer_request_abort(Demuxer *demuxer);
+int              demuxer_is_aborted(const Demuxer *demuxer);
+double           demuxer_get_max_frame_duration(const Demuxer *demuxer);
+void             demuxer_set_max_frame_duration(Demuxer *demuxer, double max_frame_duration);
+double *         demuxer_get_max_frame_duration_ptr(Demuxer *demuxer);
+SDL_cond *       demuxer_get_continue_read_thread(const Demuxer *demuxer);
+int              demuxer_get_queue_attachments_req(const Demuxer *demuxer);
+void             demuxer_set_queue_attachments_req(Demuxer *demuxer, int req);
+int              demuxer_get_read_pause_return(const Demuxer *demuxer);
+void             demuxer_set_read_pause_return(Demuxer *demuxer, int ret);
 
 /**
  * avformat_open_input() wrapper. Currently `options` are unused.
@@ -74,30 +83,18 @@ int demuxer_find_stream_components(Demuxer *demuxer);
  */
 int demuxer_get_stream_index(const Demuxer *d, enum AVMediaType type);
 
-/* Thread management */
+/**
+ * Checks if the protocol is a real-time network type (now RTSP/MMSH)
+ * that requires active polling/delaying during pause.
+ */
+int demuxer_is_realtime_network_protocol(Demuxer* d);
+
+/**
+ * Thread management
+ */
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg);
 void demuxer_stop(Demuxer *demuxer);
 void demuxer_notify_continue_read(Demuxer *demuxer);
-
-/* State accessors - abort */
-void demuxer_request_abort(Demuxer *demuxer);
-int demuxer_is_aborted(const Demuxer *demuxer);
-
-/* State accessors - frame duration */
-double demuxer_get_max_frame_duration(const Demuxer *demuxer);
-void demuxer_set_max_frame_duration(Demuxer *demuxer, double max_frame_duration);
-double *demuxer_get_max_frame_duration_ptr(Demuxer *demuxer);
-
-/* State accessors - read thread condition */
-SDL_cond *demuxer_get_continue_read_thread(const Demuxer *demuxer);
-
-/* State accessors - queue attachments */
-int demuxer_get_queue_attachments_req(const Demuxer *demuxer);
-void demuxer_set_queue_attachments_req(Demuxer *demuxer, int req);
-
-/* State accessors - read pause return */
-int demuxer_get_read_pause_return(const Demuxer *demuxer);
-void demuxer_set_read_pause_return(Demuxer *demuxer, int ret);
 
 #ifdef __cplusplus
 }
