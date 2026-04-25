@@ -190,10 +190,8 @@ int read_thread(void *arg)
         demuxer_set_seek_mode(is->demuxer, mode);
     }
 
-    demuxer_set_max_frame_duration(is->demuxer,
-                                   (ic->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0);
-
-    demuxer_set_realtime(is->demuxer, is_realtime(ic));
+    double max_duration = demuxer_get_max_gap(is->demuxer);
+    demuxer_set_max_frame_duration(is->demuxer, max_duration);
 
     /* find and open the best streams */
     if (find_stream_components(is) < 0) {

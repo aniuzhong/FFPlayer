@@ -12,7 +12,6 @@ typedef struct Demuxer {
     AVFormatContext *ic;
     int              seek_mode;
     int              abort_request;
-    int              realtime;
     int              eof;
     double           max_frame_duration;
     char            *input_url;
@@ -45,7 +44,6 @@ Demuxer *demuxer_create(const char *input_url)
         return NULL;
 
     demuxer->seek_mode          = -1;   // auto-detect
-    demuxer->realtime           = 0;
     demuxer->eof                = 0;
     demuxer->max_frame_duration = 0.0;
 
@@ -184,6 +182,14 @@ int demuxer_should_use_byte_seek(Demuxer* demuxer)
     return has_discontinuity && !is_ogg;
 }
 
+double demuxer_get_max_gap(Demuxer* demuxer)
+{
+    AVFormatContext *ic = demuxer_get_format_context(demuxer);
+    if (ic->iformat->flags & AVFMT_TS_DISCONT)
+        return 10.0;   // Unstable timestamps: be strict
+    return 3600.0;     // Stable timestamps: be lenient
+}
+
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
 {
     if (!demuxer || !read_thread_fn)
@@ -249,26 +255,6 @@ void demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode)
     if (!demuxer)
         return;
     demuxer->seek_mode = seek_mode;
-}
-
-/**
- * Check if realtime format.
- */
-int demuxer_is_realtime(const Demuxer *demuxer)
-{
-    if (!demuxer)
-        return 0;
-    return demuxer->realtime;
-}
-
-/**
- * Set realtime flag.
- */
-void demuxer_set_realtime(Demuxer *demuxer, int realtime)
-{
-    if (!demuxer)
-        return;
-    demuxer->realtime = realtime;
 }
 
 /**
@@ -351,11 +337,15 @@ void demuxer_set_read_pause_return(Demuxer *demuxer, int ret)
     demuxer->read_pause_return = ret;
 }
 
-/**
- * Check if format is realtime.
- */
-int is_realtime(AVFormatContext *s)
+int demuxer_is_realtime(Demuxer *demuxer)
 {
+    if (!demuxer)
+        return -1;
+
+    AVFormatContext *s = demuxer_get_format_context(demuxer);
+    if (!s)
+        return -1;
+
     if (!strcmp(s->iformat->name, "rtp")
         || !strcmp(s->iformat->name, "rtsp")
         || !strcmp(s->iformat->name, "sdp")) {
@@ -368,4 +358,3 @@ int is_realtime(AVFormatContext *s)
     }
     return 0;
 }
-
