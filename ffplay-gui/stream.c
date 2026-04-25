@@ -469,25 +469,28 @@ VideoState *stream_open(const char *filename,
                         void (*frame_size_changed_cb)(void *opaque, int width, int height, AVRational sar),
                         void *frame_size_opaque)
 {
-    VideoState *is;
-
     if (!filename || !audio_device || !renderer_info)
         return NULL;
 
-    is = av_mallocz(sizeof(VideoState));
+    VideoState *is = av_mallocz(sizeof(VideoState));
     if (!is)
         return NULL;
+
     is->last_video_stream = is->video_stream = -1;
     is->last_audio_stream = is->audio_stream = -1;
     is->last_subtitle_stream = is->subtitle_stream = -1;
+
     is->demuxer = demuxer_create(filename);
     if (!is->demuxer)
         goto fail;
-    is->ytop    = 0;
-    is->xleft   = 0;
+
+    is->ytop = 0;
+    is->xleft = 0;
+
     is->audio_device = audio_device;
     audio_device_set_open_cb(audio_device, audio_pipeline_open);
     is->renderer_info = *renderer_info;
+
     is->on_frame_size_changed = frame_size_changed_cb;
     is->frame_size_opaque = frame_size_opaque;
     is->on_step_frame = stream_step;
@@ -512,16 +515,11 @@ VideoState *stream_open(const char *filename,
     clock_init_from_packet_queue(is->vidclk, is->videoq);
     clock_init_from_packet_queue(is->audclk, is->audioq);
     clock_init_from_clock(is->extclk, is->extclk);
-    av_sync_bind(&is->av_sync,
-                 is->audclk,
-                 is->vidclk,
-                 is->extclk,
-                 is->audioq,
-                 is->videoq,
-                 &is->audio_st,
-                 &is->audio_stream,
-                 &is->video_stream,
+    av_sync_bind(&is->av_sync, is->audclk, is->vidclk, is->extclk,
+                 is->audioq, is->videoq, &is->audio_st,
+                 &is->audio_stream, &is->video_stream,
                  demuxer_get_max_frame_duration_ptr(is->demuxer));
+
     is->audio_pipeline = audio_pipeline_create();
     if (!is->audio_pipeline)
         goto fail;
@@ -536,6 +534,10 @@ VideoState *stream_open(const char *filename,
         goto fail;
     audio_visualizer_bind(is->audio_visualizer, is->audio_pipeline,
                           &is->paused, (int *)&is->show_mode);
+
+    // TODO: stream_prepare (AVFormatContext allocation, avformat_open_input, avformat_find_stream_info)
+
+    // TODO: stream_start (fire read thread)
     if (demuxer_start(is->demuxer, read_thread, is) < 0) {
         av_log(NULL, AV_LOG_FATAL, "Failed to start demuxer thread\n");
         goto fail;

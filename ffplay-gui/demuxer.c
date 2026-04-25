@@ -8,7 +8,6 @@
 
 #include "demuxer.h"
 
-/* Opaque structure definition - hidden from external code */
 typedef struct Demuxer {
     AVFormatContext *ic;
     int              seek_mode;
@@ -17,16 +16,18 @@ typedef struct Demuxer {
     int              eof;
     double           max_frame_duration;
     char            *input_url;
-    
     SDL_Thread      *read_tid;
     SDL_cond        *continue_read_thread;
     int              queue_attachments_req;
     int              read_pause_return;
 } Demuxer;
 
-/**
- * Create and initialize a Demuxer instance.
- */
+static int decode_interrupt_cb(void *ctx)
+{
+    Demuxer *demuxer = (Demuxer *)ctx;
+    return demuxer_is_aborted(demuxer);
+}
+
 Demuxer *demuxer_create(const char *input_url)
 {
     if (!input_url)
@@ -36,26 +37,43 @@ Demuxer *demuxer_create(const char *input_url)
     if (!demuxer)
         return NULL;
 
-    demuxer->seek_mode = -1;
-    demuxer->realtime = 0;
-    demuxer->eof = 0;
+    demuxer->seek_mode          = -1;
+    demuxer->realtime           = 0;
+    demuxer->eof                = 0;
     demuxer->max_frame_duration = 0.0;
+
     demuxer->input_url = av_strdup(input_url);
-    if (!demuxer->input_url) {
-        av_free(demuxer);
-        return NULL;
+    if (!demuxer->input_url)
+        goto fail;
+
+    demuxer->continue_read_thread = SDL_CreateCond();
+    if (!demuxer->continue_read_thread)
+        goto fail;
+
+    demuxer->ic = avformat_alloc_context();
+    if (!demuxer->ic) {
+        av_log(NULL, AV_LOG_FATAL, "Could not allocate context.\n");
+        goto fail;
     }
-    if (!(demuxer->continue_read_thread = SDL_CreateCond())) {
-        av_freep(&demuxer->input_url);
-        av_free(demuxer);
-        return NULL;
-    }
+    demuxer->ic->interrupt_callback.callback = decode_interrupt_cb;
+    demuxer->ic->interrupt_callback.opaque = demuxer;
+
     return demuxer;
+
+fail:
+    if (demuxer) {
+        if (demuxer->ic) {
+            avformat_free_context(demuxer->ic);
+        }
+        av_freep(&demuxer->input_url);
+        if (demuxer->continue_read_thread) {
+            SDL_DestroyCond(demuxer->continue_read_thread);
+        }
+        av_free(demuxer);
+    }
+    return NULL;
 }
 
-/**
- * Destroy and free a Demuxer instance.
- */
 void demuxer_free(Demuxer **demuxer)
 {
     if (!demuxer || !*demuxer)

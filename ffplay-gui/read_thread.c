@@ -16,11 +16,6 @@ static void print_error(const char *filename, int err)
     av_log(NULL, AV_LOG_ERROR, "%s: %s\n", filename, errbuf);
 }
 
-static int decode_interrupt_cb(void *ctx)
-{
-    Demuxer *demuxer = (Demuxer *)ctx;
-    return demuxer_is_aborted(demuxer);
-}
 
 /* find and open the best streams (audio, video, subtitle) */
 static int find_stream_components(VideoState *is)
@@ -174,55 +169,42 @@ static void route_packet_to_queue(VideoState *is, AVPacket *pkt)
 int read_thread(void *arg)
 {
     VideoState *is = (VideoState *)arg;
-    Demuxer *demuxer = is->demuxer;
-    AVFormatContext *ic = NULL;
     int err, ret = 0;
-    AVPacket *pkt = NULL;
-    SDL_mutex *wait_mutex = SDL_CreateMutex();
-    AVDictionary *open_opts = NULL;
 
+    SDL_mutex *wait_mutex = SDL_CreateMutex();
     if (!wait_mutex) {
         av_log(NULL, AV_LOG_FATAL, "SDL_CreateMutex(): %s\n", SDL_GetError());
         ret = AVERROR(ENOMEM);
         goto fail;
     }
 
-    demuxer_set_eof(demuxer, 0);
-
-    pkt = av_packet_alloc();
+    AVPacket *pkt = av_packet_alloc();
     if (!pkt) {
         av_log(NULL, AV_LOG_FATAL, "Could not allocate packet.\n");
         ret = AVERROR(ENOMEM);
         goto fail;
     }
 
-    /* TODO Move avformat_alloc_context() to demuxer_create (allocate in stream_open()) */
-    ic = avformat_alloc_context();
-    if (!ic) {
-        av_log(NULL, AV_LOG_FATAL, "Could not allocate context.\n");
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-    ic->interrupt_callback.callback = decode_interrupt_cb;
-    ic->interrupt_callback.opaque = demuxer;
+    AVFormatContext *ic = demuxer_get_ic(is->demuxer);
+    demuxer_set_eof(is->demuxer, 0);
+    AVDictionary *open_opts = NULL;
     if (!av_dict_get(open_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
         av_dict_set(&open_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
-    err = avformat_open_input(&ic, demuxer_get_input_name(demuxer), NULL, &open_opts);
+    err = avformat_open_input(&ic, demuxer_get_input_name(is->demuxer), NULL, &open_opts);
     av_dict_free(&open_opts);
     open_opts = NULL;
     if (err < 0) {
-        print_error(demuxer_get_input_name(demuxer), err);
+        print_error(demuxer_get_input_name(is->demuxer), err);
         ret = -1;
         goto fail;
     }
-    demuxer_set_ic(demuxer, ic);
 
     /* TODO: Move avformat_find_stream_info() to demuxer */
     err = avformat_find_stream_info(ic, NULL);
 
     if (err < 0) {
         av_log(NULL, AV_LOG_WARNING,
-               "%s: could not find codec parameters\n", demuxer_get_input_name(demuxer));
+               "%s: could not find codec parameters\n", demuxer_get_input_name(is->demuxer));
         ret = -1;
         goto fail;
     }
@@ -231,15 +213,15 @@ int read_thread(void *arg)
     if (ic->pb)
         ic->pb->eof_reached = 0;
 
-    if (demuxer_get_seek_mode(demuxer) < 0)
-        demuxer_set_seek_mode(demuxer, !(ic->iformat->flags & AVFMT_NO_BYTE_SEEK) &&
+    if (demuxer_get_seek_mode(is->demuxer) < 0)
+        demuxer_set_seek_mode(is->demuxer, !(ic->iformat->flags & AVFMT_NO_BYTE_SEEK) &&
                                        !!(ic->iformat->flags & AVFMT_TS_DISCONT) &&
                                        strcmp("ogg", ic->iformat->name));
 
-    demuxer_set_max_frame_duration(demuxer,
+    demuxer_set_max_frame_duration(is->demuxer,
                                    (ic->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0);
 
-    demuxer_set_realtime(demuxer, is_realtime(ic));
+    demuxer_set_realtime(is->demuxer, is_realtime(ic));
 
     /* find and open the best streams */
     if (find_stream_components(is) < 0) {
@@ -248,19 +230,19 @@ int read_thread(void *arg)
     }
 
     for (;;) {
-        if (demuxer_is_aborted(demuxer))
+        if (demuxer_is_aborted(is->demuxer))
             break;
         
         handle_pause_resume(is);
         
-#if CONFIG_RTSP_DEMUXER || CONFIG_MMSH_PROTOCOL
+// #if CONFIG_RTSP_DEMUXER || CONFIG_MMSH_PROTOCOL
         if (is->paused &&
                 (!strcmp(ic->iformat->name, "rtsp") ||
-                 (ic->pb && demuxer_get_input_name(demuxer) && !strncmp(demuxer_get_input_name(demuxer), "mmsh:", 5)))) {
+                 (ic->pb && demuxer_get_input_name(is->demuxer) && !strncmp(demuxer_get_input_name(is->demuxer), "mmsh:", 5)))) {
             SDL_Delay(10);
             continue;
         }
-#endif
+// #endif
         
         if (handle_seek_request(is) < 0) {
             ret = -1;
@@ -273,7 +255,7 @@ int read_thread(void *arg)
         }
 
         /* throttle reading if queue is full or has enough packets */
-        if (!demuxer_is_realtime(demuxer) &&
+        if (!demuxer_is_realtime(is->demuxer) &&
               (packet_queue_get_size(is->audioq) +
                packet_queue_get_size(is->videoq) +
                packet_queue_get_size(is->subtitleq) > MAX_QUEUE_SIZE
@@ -281,7 +263,7 @@ int read_thread(void *arg)
                 stream_has_enough_packets(is->video_st, is->video_stream, is->videoq) &&
                 stream_has_enough_packets(is->subtitle_st, is->subtitle_stream, is->subtitleq)))) {
             SDL_LockMutex(wait_mutex);
-            SDL_CondWaitTimeout(demuxer_get_continue_read_thread(demuxer), wait_mutex, 10);
+            SDL_CondWaitTimeout(demuxer_get_continue_read_thread(is->demuxer), wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
             continue;
         }
@@ -289,23 +271,23 @@ int read_thread(void *arg)
         /* read one packet from the stream */
         ret = av_read_frame(ic, pkt);
         if (ret < 0) {
-            if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !demuxer_is_eof(demuxer)) {
+            if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !demuxer_is_eof(is->demuxer)) {
                 if (is->video_stream >= 0)
                     packet_queue_put_nullpacket(is->videoq, pkt, is->video_stream);
                 if (is->audio_stream >= 0)
                     packet_queue_put_nullpacket(is->audioq, pkt, is->audio_stream);
                 if (is->subtitle_stream >= 0)
                     packet_queue_put_nullpacket(is->subtitleq, pkt, is->subtitle_stream);
-                demuxer_set_eof(demuxer, 1);
+                demuxer_set_eof(is->demuxer, 1);
             }
             if (ic->pb && ic->pb->error)
                 break;
             SDL_LockMutex(wait_mutex);
-            SDL_CondWaitTimeout(demuxer_get_continue_read_thread(demuxer), wait_mutex, 10);
+            SDL_CondWaitTimeout(demuxer_get_continue_read_thread(is->demuxer), wait_mutex, 10);
             SDL_UnlockMutex(wait_mutex);
             continue;
         } else {
-            demuxer_set_eof(demuxer, 0);
+            demuxer_set_eof(is->demuxer, 0);
         }
 
         ic->streams[pkt->stream_index]->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
@@ -318,7 +300,7 @@ int read_thread(void *arg)
     ret = 0;
 fail:
     /* TODO Move avformat_close_input to Demuxer */
-    if (ic && !demuxer_get_ic(demuxer))
+    if (ic && !demuxer_get_ic(is->demuxer))
         avformat_close_input(&ic);
 
     av_packet_free(&pkt);
