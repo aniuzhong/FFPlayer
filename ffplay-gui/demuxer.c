@@ -17,6 +17,7 @@ typedef struct Demuxer {
     double           max_frame_duration;
     char            *input_url;
     SDL_Thread      *read_tid;
+    SDL_mutex       *wait_mutex;
     SDL_cond        *continue_read_thread;
     int              queue_attachments_req;
     int              read_pause_return;
@@ -55,6 +56,10 @@ Demuxer *demuxer_create(const char *input_url)
     if (!demuxer->input_url)
         goto fail;
 
+    demuxer->wait_mutex = SDL_CreateMutex();
+    if (!demuxer->wait_mutex)
+        goto fail;
+
     demuxer->continue_read_thread = SDL_CreateCond();
     if (!demuxer->continue_read_thread)
         goto fail;
@@ -75,9 +80,10 @@ fail:
             avformat_free_context(demuxer->ic);
         }
         av_freep(&demuxer->input_url);
-        if (demuxer->continue_read_thread) {
+        if (demuxer->wait_mutex)
+            SDL_DestroyMutex(demuxer->wait_mutex);
+        if (demuxer->continue_read_thread)
             SDL_DestroyCond(demuxer->continue_read_thread);
-        }
         av_free(demuxer);
     }
     return NULL;
@@ -91,6 +97,10 @@ void demuxer_free(Demuxer **demuxer)
     Demuxer *d = *demuxer;
     avformat_close_input(&d->ic);
     av_freep(&d->input_url);
+    if (d->wait_mutex) {
+        SDL_DestroyMutex(d->wait_mutex);
+        d->wait_mutex = NULL;
+    }
     if (d->continue_read_thread) {
         SDL_DestroyCond(d->continue_read_thread);
         d->continue_read_thread = NULL;
@@ -361,6 +371,16 @@ int demuxer_is_realtime_network_protocol(Demuxer* d)
         return 1;
     }
     return 0;
+}
+
+void demuxer_wait_for_continue_reading(Demuxer *d, int32_t timeout_ms)
+{
+    if (!d || !d->wait_mutex || !d->continue_read_thread)
+        return;
+
+    SDL_LockMutex(d->wait_mutex);
+    SDL_CondWaitTimeout(d->continue_read_thread, d->wait_mutex, timeout_ms);
+    SDL_UnlockMutex(d->wait_mutex);
 }
 
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)

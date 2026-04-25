@@ -87,14 +87,27 @@ int demuxer_get_stream_index(const Demuxer *d, enum AVMediaType type);
  * Checks if the protocol is a real-time network type (now RTSP/MMSH)
  * that requires active polling/delaying during pause.
  */
-int demuxer_is_realtime_network_protocol(Demuxer* d);
+int demuxer_is_realtime_network_protocol(Demuxer *d);
 
 /**
- * Thread management
+ * Start read_thread
  */
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg);
+
+/**
+ * Stop the read_thread and wait for it to finish.
+ */
 void demuxer_stop(Demuxer *demuxer);
+
+/**
+ * Signal the read thread to continue reading.
+ */
 void demuxer_notify_continue_read(Demuxer *demuxer);
+
+/**
+ * Wait for a signal to continue reading. This is used to implement efficient waiting
+ */
+void demuxer_wait_for_continue_reading(Demuxer *d, int32_t timeout_ms);
 
 #ifdef __cplusplus
 }

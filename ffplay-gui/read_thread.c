@@ -132,13 +132,6 @@ int read_thread(void *arg)
     VideoState *is = (VideoState *)arg;
     int err, ret = 0;
 
-    SDL_mutex *wait_mutex = SDL_CreateMutex();
-    if (!wait_mutex) {
-        av_log(NULL, AV_LOG_FATAL, "SDL_CreateMutex(): %s\n", SDL_GetError());
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-
     AVPacket *pkt = av_packet_alloc();
     if (!pkt) {
         av_log(NULL, AV_LOG_FATAL, "Could not allocate packet.\n");
@@ -201,9 +194,7 @@ int read_thread(void *arg)
             || (stream_has_enough_packets(is->audio_st, is->audio_stream, is->audioq) &&
                 stream_has_enough_packets(is->video_st, is->video_stream, is->videoq) &&
                 stream_has_enough_packets(is->subtitle_st, is->subtitle_stream, is->subtitleq)))) {
-            SDL_LockMutex(wait_mutex);
-            SDL_CondWaitTimeout(demuxer_get_continue_read_thread(is->demuxer), wait_mutex, 10);
-            SDL_UnlockMutex(wait_mutex);
+            demuxer_wait_for_continue_reading(is->demuxer, 10);
             continue;
         }
         
@@ -221,9 +212,7 @@ int read_thread(void *arg)
             }
             if (ic->pb && ic->pb->error)
                 break;
-            SDL_LockMutex(wait_mutex);
-            SDL_CondWaitTimeout(demuxer_get_continue_read_thread(is->demuxer), wait_mutex, 10);
-            SDL_UnlockMutex(wait_mutex);
+            demuxer_wait_for_continue_reading(is->demuxer, 10);
             continue;
         } else {
             demuxer_set_eof(is->demuxer, 0);
@@ -242,6 +231,5 @@ fail:
 
     if (ret != 0)
         is->quit_request = 1;
-    SDL_DestroyMutex(wait_mutex);
     return 0;
 }
