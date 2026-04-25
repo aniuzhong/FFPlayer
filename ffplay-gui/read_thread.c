@@ -198,8 +198,7 @@ int read_thread(void *arg)
             continue;
         }
         
-        /* read one packet from the stream */
-        ret = av_read_frame(ic, pkt);
+        ret = demuxer_read_packet(is->demuxer, pkt);
         if (ret < 0) {
             if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !demuxer_is_eof(is->demuxer)) {
                 if (is->video_stream >= 0)

@@ -90,6 +90,11 @@ int demuxer_get_stream_index(const Demuxer *d, enum AVMediaType type);
 int demuxer_is_realtime_network_protocol(Demuxer *d);
 
 /**
+ * Read one packet. Thin wrapper around av_read_frame().
+ */
+int demuxer_read_packet(Demuxer *d, AVPacket *pkt);
+
+/**
  * Start read_thread
  */
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg);

@@ -373,14 +373,11 @@ int demuxer_is_realtime_network_protocol(Demuxer* d)
     return 0;
 }
 
-void demuxer_wait_for_continue_reading(Demuxer *d, int32_t timeout_ms)
+int demuxer_read_packet(Demuxer *d, AVPacket *pkt)
 {
-    if (!d || !d->wait_mutex || !d->continue_read_thread)
-        return;
-
-    SDL_LockMutex(d->wait_mutex);
-    SDL_CondWaitTimeout(d->continue_read_thread, d->wait_mutex, timeout_ms);
-    SDL_UnlockMutex(d->wait_mutex);
+    if (!d || !pkt)
+        return AVERROR(EINVAL);
+    return av_read_frame(d->ic, pkt);
 }
 
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
@@ -402,3 +399,14 @@ void demuxer_stop(Demuxer *demuxer)
         demuxer->read_tid = NULL;
     }
 }
+
+void demuxer_wait_for_continue_reading(Demuxer *d, int32_t timeout_ms)
+{
+    if (!d || !d->wait_mutex || !d->continue_read_thread)
+        return;
+
+    SDL_LockMutex(d->wait_mutex);
+    SDL_CondWaitTimeout(d->continue_read_thread, d->wait_mutex, timeout_ms);
+    SDL_UnlockMutex(d->wait_mutex);
+}
+
