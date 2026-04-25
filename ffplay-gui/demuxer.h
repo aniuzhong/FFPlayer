@@ -95,6 +95,46 @@ int demuxer_is_realtime_network_protocol(Demuxer *d);
 int demuxer_read_packet(Demuxer *d, AVPacket *pkt);
 
 /**
+ * Check if the demuxer has encountered an I/O error.
+ */
+int demuxer_is_io_error(Demuxer *d);
+
+/**
+ * Determine if the demuxer should handle EOF.
+ */
+int demuxer_should_handle_eof(Demuxer *d, int ret);
+
+/**
+ * Handle stream events for a received packet.
+ */
+void demuxer_handle_pkt_stream_events(Demuxer *d, AVPacket *pkt);
+
+/**
+ * Thin wrapper around av_read_play().
+ */
+int demuxer_remote_play(Demuxer *d);
+
+/**
+ * Thin wrapper around av_read_pause().
+ */
+int demuxer_remote_pause(Demuxer *d);
+
+/*
+ * ic -> streams -> index -> codecpar -> width
+ */
+int demuxer_get_stream_width(const Demuxer *d, int stream_index);
+
+/*
+ * ic -> streams -> index -> codecpar -> height
+ */
+int demuxer_get_stream_height(const Demuxer *d, int stream_index);
+
+/*
+ * Guess the sample aspect ratio for the given stream index
+ */
+AVRational demuxer_guess_sample_aspect_ratio(const Demuxer *d, int stream_index);
+
+/**
  * Start read_thread
  */
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg);

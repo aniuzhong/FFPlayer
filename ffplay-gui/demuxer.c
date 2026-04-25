@@ -6,6 +6,7 @@
 #include <libavutil/error.h>
 #include <libavutil/mem.h>
 #include <libavformat/avformat.h>
+#include <libavutil/rational.h>
 
 #include "demuxer.h"
 
@@ -380,6 +381,86 @@ int demuxer_read_packet(Demuxer *d, AVPacket *pkt)
     return av_read_frame(d->ic, pkt);
 }
 
+int demuxer_is_io_error(Demuxer *d)
+{
+    AVFormatContext *ic = d->ic;
+    return ic && ic->pb && ic->pb->error;
+}
+
+int demuxer_should_handle_eof(Demuxer *d, int ret)
+{
+    AVFormatContext *ic = d->ic;
+    if (!ic)
+        return 0;
+    if (ret == AVERROR_EOF || (ic->pb && avio_feof(ic->pb))) {
+        return !demuxer_is_eof(d);
+    }
+    return 0;
+}
+
+void demuxer_handle_pkt_stream_events(Demuxer *d, AVPacket *pkt)
+{
+    AVFormatContext *ic = d->ic;
+    if (!ic || !pkt)
+        return;
+
+    if (pkt->stream_index < 0 || pkt->stream_index >= ic->nb_streams)
+        return;
+
+    AVStream *st = ic->streams[pkt->stream_index];
+    if (st->event_flags & AVSTREAM_EVENT_FLAG_METADATA_UPDATED) {
+        st->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
+        // Handle metadata update event here if needed
+    }
+}
+
+int demuxer_remote_play(Demuxer *d)
+{
+    if (!d || !d->ic)
+        return AVERROR(EINVAL);
+    return av_read_play(d->ic);
+}
+
+int demuxer_remote_pause(Demuxer *d)
+{
+    if (!d || !d->ic)
+        return AVERROR(EINVAL);
+    return av_read_pause(d->ic);
+}
+
+int demuxer_get_stream_width(const Demuxer *d, int stream_index)
+{
+    AVFormatContext *ic = d->ic;
+    if (!ic || stream_index < 0 || stream_index >= ic->nb_streams)
+        return 0;
+    AVStream *st = ic->streams[stream_index];
+    if (!st || !st->codecpar)
+        return 0;
+    return st->codecpar->width;
+}
+
+int demuxer_get_stream_height(const Demuxer *d, int stream_index)
+{
+    AVFormatContext *ic = d->ic;
+    if (!ic || stream_index < 0 || stream_index >= ic->nb_streams)
+        return 0;
+    AVStream *st = ic->streams[stream_index];
+    if (!st || !st->codecpar)
+        return 0;
+    return st->codecpar->height;
+}
+
+AVRational demuxer_guess_sample_aspect_ratio(const Demuxer *d, int stream_index)
+{
+    AVFormatContext *ic = d->ic;
+    if (!ic || stream_index < 0 || stream_index >= ic->nb_streams)
+        return (AVRational){0, 1};
+    AVStream *st = ic->streams[stream_index];
+    if (!st)
+        return (AVRational){0, 1};
+    return av_guess_sample_aspect_ratio(ic, st, NULL);
+}
+
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
 {
     if (!demuxer || !read_thread_fn)
@@ -409,4 +490,3 @@ void demuxer_wait_for_continue_reading(Demuxer *d, int32_t timeout_ms)
     SDL_CondWaitTimeout(d->continue_read_thread, d->wait_mutex, timeout_ms);
     SDL_UnlockMutex(d->wait_mutex);
 }
-

@@ -1,5 +1,3 @@
-#include <string.h>
-
 #include <libavutil/error.h>
 #include <libavutil/log.h>
 
@@ -13,15 +11,14 @@ static int open_stream_components(VideoState *is)
 {
     int ret = -1;
 
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
-
     is->show_mode = SHOW_MODE_NONE;
     if (demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO) >= 0) {
-        AVStream *st = ic->streams[demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO)];
-        AVCodecParameters *codecpar = st->codecpar;
-        AVRational sar = av_guess_sample_aspect_ratio(ic, st, NULL);
-        if (codecpar->width && is->on_frame_size_changed)
-            is->on_frame_size_changed(is->frame_size_opaque, codecpar->width, codecpar->height, sar);
+        AVRational sar = demuxer_guess_sample_aspect_ratio(is->demuxer, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO));
+        int width = demuxer_get_stream_width(is->demuxer, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO));
+        int height = demuxer_get_stream_height(is->demuxer, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO));
+        // if (codecpar->width && is->on_frame_size_changed)
+        if (width && height && is->on_frame_size_changed)
+            is->on_frame_size_changed(is->frame_size_opaque, width, height, sar);
     }
 
     if (demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_AUDIO) >= 0) {
@@ -51,17 +48,18 @@ static int open_stream_components(VideoState *is)
 /* handle pause and resume for the stream */
 static void handle_pause_resume(VideoState *is)
 {
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
     if (is->paused != is->last_paused) {
         is->last_paused = is->paused;
-        if (is->paused)
-            demuxer_set_read_pause_return(is->demuxer, av_read_pause(ic));
-        else
-            av_read_play(ic);
+        if (is->paused) {
+            int ret = demuxer_remote_pause(is->demuxer);
+            demuxer_set_read_pause_return(is->demuxer, ret);
+        }
+        else {
+            demuxer_remote_play(is->demuxer);
+        }
     }
 }
 
-/* handle seek request from user */
 static int handle_seek_request(VideoState *is)
 {
     Demuxer *demuxer = is->demuxer;
@@ -139,8 +137,6 @@ int read_thread(void *arg)
         goto fail;
     }
 
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
-
     demuxer_set_eof(is->demuxer, 0);
     demuxer_open_input(is->demuxer, NULL);
     demuxer_find_stream_info(is->demuxer, NULL);
@@ -200,7 +196,7 @@ int read_thread(void *arg)
         
         ret = demuxer_read_packet(is->demuxer, pkt);
         if (ret < 0) {
-            if ((ret == AVERROR_EOF || avio_feof(ic->pb)) && !demuxer_is_eof(is->demuxer)) {
+            if (demuxer_should_handle_eof(is->demuxer, ret)) {
                 if (is->video_stream >= 0)
                     packet_queue_put_nullpacket(is->videoq, pkt, is->video_stream);
                 if (is->audio_stream >= 0)
@@ -209,15 +205,13 @@ int read_thread(void *arg)
                     packet_queue_put_nullpacket(is->subtitleq, pkt, is->subtitle_stream);
                 demuxer_set_eof(is->demuxer, 1);
             }
-            if (ic->pb && ic->pb->error)
+            if (demuxer_is_io_error(is->demuxer))
                 break;
             demuxer_wait_for_continue_reading(is->demuxer, 10);
             continue;
         } else {
             demuxer_set_eof(is->demuxer, 0);
         }
-
-        ic->streams[pkt->stream_index]->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
 
         route_packet_to_queue(is, pkt);
     }
