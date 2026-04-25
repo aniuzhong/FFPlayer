@@ -5,6 +5,7 @@
 
 #include <libavutil/error.h>
 #include <libavutil/mem.h>
+#include <libavformat/avformat.h>
 
 #include "demuxer.h"
 
@@ -19,6 +20,7 @@ typedef struct Demuxer {
     SDL_cond        *continue_read_thread;
     int              queue_attachments_req;
     int              read_pause_return;
+    int              st_index[AVMEDIA_TYPE_NB];
 } Demuxer;
 
 static int decode_interrupt_cb(void *ctx)
@@ -46,6 +48,8 @@ Demuxer *demuxer_create(const char *input_url)
     demuxer->seek_mode          = -1;   // auto-detect
     demuxer->eof                = 0;
     demuxer->max_frame_duration = 0.0;
+
+    memset(demuxer->st_index, -1, sizeof(demuxer->st_index));
 
     demuxer->input_url = av_strdup(input_url);
     if (!demuxer->input_url)
@@ -188,6 +192,67 @@ double demuxer_get_max_gap(Demuxer* demuxer)
     if (ic->iformat->flags & AVFMT_TS_DISCONT)
         return 10.0;   // Unstable timestamps: be strict
     return 3600.0;     // Stable timestamps: be lenient
+}
+
+int demuxer_is_realtime(Demuxer *demuxer)
+{
+    if (!demuxer)
+        return -1;
+
+    AVFormatContext *s = demuxer_get_format_context(demuxer);
+    if (!s)
+        return -1;
+
+    if (!strcmp(s->iformat->name, "rtp")
+        || !strcmp(s->iformat->name, "rtsp")
+        || !strcmp(s->iformat->name, "sdp")) {
+        return 1;
+    }
+
+    if (s->pb && (!strncmp(s->url, "rtp:", 4)
+        || !strncmp(s->url, "udp:", 4))) {
+        return 1;
+    }
+    return 0;
+}
+
+int demuxer_find_stream_components(Demuxer *demuxer)
+{
+    if (!demuxer->ic) {
+        av_log(NULL, AV_LOG_ERROR, "AVFormatContext not initialized\n");
+        return -1;
+    }
+
+    for (int i = 0; i < demuxer->ic->nb_streams; i++) {
+        AVStream *st = demuxer->ic->streams[i];
+        st->discard = AVDISCARD_ALL;
+        st->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
+    }
+
+    demuxer->st_index[AVMEDIA_TYPE_VIDEO] =
+        av_find_best_stream(demuxer->ic, AVMEDIA_TYPE_VIDEO,
+                            demuxer->st_index[AVMEDIA_TYPE_VIDEO], -1, NULL, 0);
+    demuxer->st_index[AVMEDIA_TYPE_AUDIO] =
+        av_find_best_stream(demuxer->ic, AVMEDIA_TYPE_AUDIO,
+                            demuxer->st_index[AVMEDIA_TYPE_AUDIO],
+                            demuxer->st_index[AVMEDIA_TYPE_VIDEO],
+                            NULL, 0);
+    demuxer->st_index[AVMEDIA_TYPE_SUBTITLE] =
+        av_find_best_stream(demuxer->ic, AVMEDIA_TYPE_SUBTITLE,
+                            demuxer->st_index[AVMEDIA_TYPE_SUBTITLE],
+                            (demuxer->st_index[AVMEDIA_TYPE_AUDIO] >= 0 ?
+                             demuxer->st_index[AVMEDIA_TYPE_AUDIO] :
+                             demuxer->st_index[AVMEDIA_TYPE_VIDEO]),
+                            NULL, 0);
+    return 0;
+}
+
+int demuxer_get_stream_index(const Demuxer *d, enum AVMediaType type)
+{
+    if (!d || (unsigned int)type >= AVMEDIA_TYPE_NB) {
+        return -1; 
+    }
+    return d->st_index[type];
 }
 
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
@@ -337,24 +402,3 @@ void demuxer_set_read_pause_return(Demuxer *demuxer, int ret)
     demuxer->read_pause_return = ret;
 }
 
-int demuxer_is_realtime(Demuxer *demuxer)
-{
-    if (!demuxer)
-        return -1;
-
-    AVFormatContext *s = demuxer_get_format_context(demuxer);
-    if (!s)
-        return -1;
-
-    if (!strcmp(s->iformat->name, "rtp")
-        || !strcmp(s->iformat->name, "rtsp")
-        || !strcmp(s->iformat->name, "sdp")) {
-        return 1;
-    }
-
-    if (s->pb && (!strncmp(s->url, "rtp:", 4)
-        || !strncmp(s->url, "udp:", 4))) {
-        return 1;
-    }
-    return 0;
-}

@@ -9,65 +9,34 @@
 #include "packet_queue.h"
 #include "read_thread.h"
 
-/* find and open the best streams (audio, video, subtitle) */
-static int find_stream_components(VideoState *is)
+static int open_stream_components(VideoState *is)
 {
-    // TODO Move find_stream_components to Demuxer and keep open_stream_component in read_thread.c
+    int ret = -1;
+
     AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
-    int st_index[AVMEDIA_TYPE_NB];
-    int i, ret = -1;
-
-    if (!ic) {
-        av_log(NULL, AV_LOG_ERROR, "AVFormatContext not initialized\n");
-        return -1;
-    }
-
-    memset(st_index, -1, sizeof(st_index));
-
-    for (i = 0; i < ic->nb_streams; i++) {
-        AVStream *st = ic->streams[i];
-        st->discard = AVDISCARD_ALL;
-        st->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
-    }
-
-    st_index[AVMEDIA_TYPE_VIDEO] =
-        av_find_best_stream(ic, AVMEDIA_TYPE_VIDEO,
-                            st_index[AVMEDIA_TYPE_VIDEO], -1, NULL, 0);
-    st_index[AVMEDIA_TYPE_AUDIO] =
-        av_find_best_stream(ic, AVMEDIA_TYPE_AUDIO,
-                            st_index[AVMEDIA_TYPE_AUDIO],
-                            st_index[AVMEDIA_TYPE_VIDEO],
-                            NULL, 0);
-    st_index[AVMEDIA_TYPE_SUBTITLE] =
-        av_find_best_stream(ic, AVMEDIA_TYPE_SUBTITLE,
-                            st_index[AVMEDIA_TYPE_SUBTITLE],
-                            (st_index[AVMEDIA_TYPE_AUDIO] >= 0 ?
-                             st_index[AVMEDIA_TYPE_AUDIO] :
-                             st_index[AVMEDIA_TYPE_VIDEO]),
-                            NULL, 0);
 
     is->show_mode = SHOW_MODE_NONE;
-    if (st_index[AVMEDIA_TYPE_VIDEO] >= 0) {
-        AVStream *st = ic->streams[st_index[AVMEDIA_TYPE_VIDEO]];
+    if (demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO) >= 0) {
+        AVStream *st = ic->streams[demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO)];
         AVCodecParameters *codecpar = st->codecpar;
         AVRational sar = av_guess_sample_aspect_ratio(ic, st, NULL);
         if (codecpar->width && is->on_frame_size_changed)
             is->on_frame_size_changed(is->frame_size_opaque, codecpar->width, codecpar->height, sar);
     }
 
-    if (st_index[AVMEDIA_TYPE_AUDIO] >= 0) {
-        stream_component_open(is, st_index[AVMEDIA_TYPE_AUDIO]);
+    if (demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_AUDIO) >= 0) {
+        stream_component_open(is, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_AUDIO));
     }
 
     ret = -1;
-    if (st_index[AVMEDIA_TYPE_VIDEO] >= 0) {
-        ret = stream_component_open(is, st_index[AVMEDIA_TYPE_VIDEO]);
+    if (demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO) >= 0) {
+        ret = stream_component_open(is, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO));
     }
     if (is->show_mode == SHOW_MODE_NONE)
         is->show_mode = ret >= 0 ? SHOW_MODE_VIDEO : SHOW_MODE_RDFT;
 
-    if (st_index[AVMEDIA_TYPE_SUBTITLE] >= 0) {
-        stream_component_open(is, st_index[AVMEDIA_TYPE_SUBTITLE]);
+    if (demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_SUBTITLE) >= 0) {
+        stream_component_open(is, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_SUBTITLE));
     }
 
     if (is->video_stream < 0 && is->audio_stream < 0) {
@@ -193,8 +162,12 @@ int read_thread(void *arg)
     double max_duration = demuxer_get_max_gap(is->demuxer);
     demuxer_set_max_frame_duration(is->demuxer, max_duration);
 
-    /* find and open the best streams */
-    if (find_stream_components(is) < 0) {
+    if (demuxer_find_stream_components(is->demuxer) < 0) {
+        ret = -1;
+        goto fail;
+    }
+
+    if (open_stream_components(is) < 0) {
         ret = -1;
         goto fail;
     }
@@ -202,9 +175,9 @@ int read_thread(void *arg)
     for (;;) {
         if (demuxer_is_aborted(is->demuxer))
             break;
-        
+
         handle_pause_resume(is);
-        
+
 // #if CONFIG_RTSP_DEMUXER || CONFIG_MMSH_PROTOCOL
         if (is->paused &&
                 (!strcmp(ic->iformat->name, "rtsp") ||
@@ -213,7 +186,7 @@ int read_thread(void *arg)
             continue;
         }
 // #endif
-        
+
         if (handle_seek_request(is) < 0) {
             ret = -1;
             goto fail;

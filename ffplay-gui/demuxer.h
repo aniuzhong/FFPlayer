@@ -1,6 +1,7 @@
 #ifndef FFPLAY_GUI_DEMUXER_H
 #define FFPLAY_GUI_DEMUXER_H
 
+#include "libavutil/rational.h"
 #include <SDL_thread.h>
 
 #include <libavformat/avformat.h>
@@ -62,6 +63,16 @@ double demuxer_get_max_gap(Demuxer* demuxer);
  * Check if the input format is realtime (e.g. RTSP, RTP, SDP).
  */
 int demuxer_is_realtime(Demuxer *demuxer);
+
+/**
+ * av_find_best_stream() wrapper to find the best stream of each media type and store
+ */
+int demuxer_find_stream_components(Demuxer *demuxer);
+
+/**
+ * Get the stream index for a specific media type.
+ */
+int demuxer_get_stream_index(const Demuxer *d, enum AVMediaType type);
 
 /* Thread management */
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg);
