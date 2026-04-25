@@ -182,15 +182,13 @@ int read_thread(void *arg)
     demuxer_set_eof(is->demuxer, 0);
     demuxer_open_input(is->demuxer, NULL);
     demuxer_find_stream_info(is->demuxer, NULL);
+    demuxer_set_io_context_eof(is->demuxer, 0);
 
-    /* TODO Provide modifier in demuxer */
-    if (ic->pb)
-        ic->pb->eof_reached = 0;
-
-    if (demuxer_get_seek_mode(is->demuxer) < 0)
-        demuxer_set_seek_mode(is->demuxer, !(ic->iformat->flags & AVFMT_NO_BYTE_SEEK) &&
-                                       !!(ic->iformat->flags & AVFMT_TS_DISCONT) &&
-                                       strcmp("ogg", ic->iformat->name));
+    // If not explicitly set a seek mode, auto-detect it based on format flags.
+    if (demuxer_get_seek_mode(is->demuxer) < 0) {
+        int mode = demuxer_should_use_byte_seek(is->demuxer);
+        demuxer_set_seek_mode(is->demuxer, mode);
+    }
 
     demuxer_set_max_frame_duration(is->demuxer,
                                    (ic->iformat->flags & AVFMT_TS_DISCONT) ? 10.0 : 3600.0);

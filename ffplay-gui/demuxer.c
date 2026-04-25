@@ -35,8 +35,6 @@ static void print_error(const char *filename, int err)
     av_log(NULL, AV_LOG_ERROR, "%s: %s\n", filename, errbuf);
 }
 
-
-
 Demuxer *demuxer_create(const char *input_url)
 {
     if (!input_url)
@@ -46,7 +44,7 @@ Demuxer *demuxer_create(const char *input_url)
     if (!demuxer)
         return NULL;
 
-    demuxer->seek_mode          = -1;
+    demuxer->seek_mode          = -1;   // auto-detect
     demuxer->realtime           = 0;
     demuxer->eof                = 0;
     demuxer->max_frame_duration = 0.0;
@@ -99,6 +97,35 @@ void demuxer_free(Demuxer **demuxer)
     *demuxer = NULL;
 }
 
+const char *demuxer_get_input_name(const Demuxer *demuxer)
+{
+    if (!demuxer || !demuxer->input_url)
+        return "";
+    return demuxer->input_url;
+}
+
+AVFormatContext *demuxer_get_format_context(const Demuxer *demuxer)
+{
+    /* TODO Consider a better wrapper instead of direct access to demuxer->ic */
+    if (!demuxer)
+        return NULL;
+    return demuxer->ic;
+}
+
+int demuxer_is_eof(const Demuxer *demuxer)
+{
+    if (!demuxer)
+        return 0;
+    return demuxer->eof;
+}
+
+void demuxer_set_eof(Demuxer *demuxer, int eof)
+{
+    if (!demuxer)
+        return;
+    demuxer->eof = eof;
+}
+
 int demuxer_open_input(Demuxer *demuxer, AVDictionary **options)
 {
     AVDictionary *open_opts = NULL;
@@ -123,6 +150,38 @@ int demuxer_find_stream_info(Demuxer *demuxer, AVDictionary **options)
         return -1;
     }
     return 0;
+}
+
+void demuxer_set_io_context_eof(Demuxer *demuxer, int eof)
+{
+    // FIXME hack, ffplay maybe should not use avio_feof() to test for the end
+    if (demuxer->ic->pb)
+        demuxer->ic->pb->eof_reached = eof;
+}
+
+int demuxer_should_use_byte_seek(Demuxer* demuxer)
+{
+    AVFormatContext *ic = demuxer->ic;
+
+    // 1. Baseline: If the format explicitly flags byte seeking as unsupported
+    //    return false.
+    if (ic->iformat->flags & AVFMT_NO_BYTE_SEEK) {
+        return 0;
+    }
+
+    // 2. Core logic: Check for timestamp discontinuities.
+    //    '!!' ensures the bitwise result is normalized to a boolean 0 or 1.
+    int has_discontinuity = !!(ic->iformat->flags & AVFMT_TS_DISCONT);
+
+    // 3. Exception: Even with discontinuity flags,
+    //    Ogg's internal page structure makes byte seeking perform poorly.
+    int is_ogg = (strcmp("ogg", ic->iformat->name) == 0);
+
+    // Final: Enable byte seeking only if
+    //        the format supports it,
+    //        exhibits timestamp discontinuities,
+    //        and is not the Ogg format.
+    return has_discontinuity && !is_ogg;
 }
 
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
@@ -178,9 +237,6 @@ int demuxer_is_aborted(const Demuxer *demuxer)
     return demuxer->abort_request;
 }
 
-/**
- * Get seek mode.
- */
 int demuxer_get_seek_mode(const Demuxer *demuxer)
 {
     if (!demuxer || demuxer->seek_mode < 0)
@@ -188,45 +244,11 @@ int demuxer_get_seek_mode(const Demuxer *demuxer)
     return demuxer->seek_mode;
 }
 
-/**
- * Set seek mode.
- */
 void demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode)
 {
     if (!demuxer)
         return;
     demuxer->seek_mode = seek_mode;
-}
-
-/**
- * Get input URL.
- */
-const char *demuxer_get_input_name(const Demuxer *demuxer)
-{
-    if (!demuxer || !demuxer->input_url)
-        return "";
-    return demuxer->input_url;
-}
-
-/**
- * Get AVFormatContext.
- */
-AVFormatContext *demuxer_get_format_context(const Demuxer *demuxer)
-{
-    /* TODO Consider a better wrapper instead of direct access to demuxer->ic */
-    if (!demuxer)
-        return NULL;
-    return demuxer->ic;
-}
-
-/**
- * Set AVFormatContext.
- */
-void demuxer_set_ic(Demuxer *demuxer, AVFormatContext *ic)
-{
-    if (!demuxer)
-        return;
-    demuxer->ic = ic;
 }
 
 /**
@@ -247,26 +269,6 @@ void demuxer_set_realtime(Demuxer *demuxer, int realtime)
     if (!demuxer)
         return;
     demuxer->realtime = realtime;
-}
-
-/**
- * Check if EOF reached.
- */
-int demuxer_is_eof(const Demuxer *demuxer)
-{
-    if (!demuxer)
-        return 0;
-    return demuxer->eof;
-}
-
-/**
- * Set EOF flag.
- */
-void demuxer_set_eof(Demuxer *demuxer, int eof)
-{
-    if (!demuxer)
-        return;
-    demuxer->eof = eof;
 }
 
 /**

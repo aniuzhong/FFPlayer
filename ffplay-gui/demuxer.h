@@ -26,6 +26,10 @@ void demuxer_free(Demuxer **demuxer);
  */
 AVFormatContext *demuxer_get_format_context(const Demuxer *demuxer);
 const char      *demuxer_get_input_name(const Demuxer *demuxer);
+int              demuxer_is_eof(const Demuxer *demuxer);
+void             demuxer_set_eof(Demuxer *demuxer, int eof);
+int              demuxer_get_seek_mode(const Demuxer *demuxer);
+void             demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode);
 
 /*
  * avformat_open_input() wrapper. Currently `options` are unused.
@@ -37,6 +41,16 @@ int demuxer_open_input(Demuxer *demuxer, AVDictionary **options);
  */
 int demuxer_find_stream_info(Demuxer *demuxer, AVDictionary **options);
 
+/*
+ * Set AVFormatContext::AVIOContext::eof_reached.
+ */
+void demuxer_set_io_context_eof(Demuxer *demuxer, int eof);
+
+/*
+ * Determines if byte-based seeking is recommended for the current format.
+ */
+int demuxer_should_use_byte_seek(Demuxer* demuxer);
+
 /* Thread management */
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg);
 void demuxer_stop(Demuxer *demuxer);
@@ -46,20 +60,9 @@ void demuxer_notify_continue_read(Demuxer *demuxer);
 void demuxer_request_abort(Demuxer *demuxer);
 int demuxer_is_aborted(const Demuxer *demuxer);
 
-/* State accessors - seek mode */
-int demuxer_get_seek_mode(const Demuxer *demuxer);
-void demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode);
-
-
-void demuxer_set_ic(Demuxer *demuxer, AVFormatContext *ic);
-
 /* State accessors - realtime */
 int demuxer_is_realtime(const Demuxer *demuxer);
 void demuxer_set_realtime(Demuxer *demuxer, int realtime);
-
-/* State accessors - EOF */
-int demuxer_is_eof(const Demuxer *demuxer);
-void demuxer_set_eof(Demuxer *demuxer, int eof);
 
 /* State accessors - frame duration */
 double demuxer_get_max_frame_duration(const Demuxer *demuxer);
