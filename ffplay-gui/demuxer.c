@@ -245,11 +245,11 @@ int demuxer_find_stream_info(Demuxer *demuxer, AVDictionary **options)
     return 0;
 }
 
-void demuxer_set_io_context_eof(Demuxer *demuxer, int eof)
+void demuxer_io_reset_eof(Demuxer *demuxer)
 {
     // FIXME hack, ffplay maybe should not use avio_feof() to test for the end
     if (demuxer->ic->pb)
-        demuxer->ic->pb->eof_reached = eof;
+        demuxer->ic->pb->eof_reached = 0;
 }
 
 int demuxer_should_use_byte_seek(Demuxer* demuxer)

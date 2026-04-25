@@ -52,9 +52,9 @@ int demuxer_open_input(Demuxer *demuxer, AVDictionary **options);
 int demuxer_find_stream_info(Demuxer *demuxer, AVDictionary **options);
 
 /**
- * Set AVFormatContext::AVIOContext::eof_reached.
+ * Reset AVFormatContext::AVIOContext::eof_reached.
  */
-void demuxer_set_io_context_eof(Demuxer *demuxer, int eof);
+void demuxer_io_reset_eof(Demuxer *demuxer);
 
 /**
  * Determines if byte-based seeking is recommended for the current format.

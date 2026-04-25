@@ -151,7 +151,7 @@ int read_thread(void *arg)
     demuxer_set_eof(is->demuxer, 0);
     demuxer_open_input(is->demuxer, NULL);
     demuxer_find_stream_info(is->demuxer, NULL);
-    demuxer_set_io_context_eof(is->demuxer, 0);
+    demuxer_io_reset_eof(is->demuxer);
 
     // If not explicitly set a seek mode, auto-detect it based on format flags.
     if (demuxer_get_seek_mode(is->demuxer) < 0) {
