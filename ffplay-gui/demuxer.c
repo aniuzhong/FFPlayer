@@ -483,6 +483,13 @@ int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
     return 0;
 }
 
+int demuxer_seek_file(Demuxer *d, int stream_index, int64_t min_ts, int64_t ts, int64_t max_ts, int flags)
+{
+    if (!d || !d->ic)
+        return AVERROR(EINVAL);
+    return avformat_seek_file(d->ic, stream_index, min_ts, ts, max_ts, flags);
+}
+
 void demuxer_stop(Demuxer *demuxer)
 {
     if (!demuxer)

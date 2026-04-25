@@ -70,7 +70,7 @@ static int handle_seek_request(VideoState *is)
     int64_t seek_min    = is->seek_rel > 0 ? seek_target - is->seek_rel + 2: INT64_MIN;
     int64_t seek_max    = is->seek_rel < 0 ? seek_target - is->seek_rel - 2: INT64_MAX;
 
-    int ret = avformat_seek_file(demuxer_get_format_context(demuxer), -1, seek_min, seek_target, seek_max, is->seek_flags);
+    int ret = demuxer_seek_file(demuxer, -1, seek_min, seek_target, seek_max, is->seek_flags);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "%s: error while seeking\n", demuxer_get_input_name(demuxer));
     } else {

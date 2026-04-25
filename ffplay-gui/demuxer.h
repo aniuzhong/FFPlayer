@@ -143,6 +143,11 @@ AVRational demuxer_guess_sample_aspect_ratio(const Demuxer *d, int stream_index,
  */
 AVRational demuxer_guess_frame_rate(const Demuxer *d, int stream_index, AVFrame *frame);
 
+/*
+ * Seek to timestamp ts.
+ */
+int demuxer_seek_file(Demuxer *d, int stream_index, int64_t min_ts, int64_t ts, int64_t max_ts, int flags);
+
 /**
  * Start read_thread
  */
