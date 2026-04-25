@@ -9,14 +9,6 @@
 #include "packet_queue.h"
 #include "read_thread.h"
 
-static void print_error(const char *filename, int err)
-{
-    char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
-    av_strerror(err, errbuf, sizeof(errbuf));
-    av_log(NULL, AV_LOG_ERROR, "%s: %s\n", filename, errbuf);
-}
-
-
 /* find and open the best streams (audio, video, subtitle) */
 static int find_stream_components(VideoState *is)
 {
@@ -188,28 +180,8 @@ int read_thread(void *arg)
     AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
 
     demuxer_set_eof(is->demuxer, 0);
-
-    AVDictionary *open_opts = NULL;
-    if (!av_dict_get(open_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
-        av_dict_set(&open_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
-    err = avformat_open_input(&ic, demuxer_get_input_name(is->demuxer), NULL, &open_opts);
-    av_dict_free(&open_opts);
-    open_opts = NULL;
-    if (err < 0) {
-        print_error(demuxer_get_input_name(is->demuxer), err);
-        ret = -1;
-        goto fail;
-    }
-
-    /* TODO: Move avformat_find_stream_info() to demuxer */
-    err = avformat_find_stream_info(ic, NULL);
-
-    if (err < 0) {
-        av_log(NULL, AV_LOG_WARNING,
-               "%s: could not find codec parameters\n", demuxer_get_input_name(is->demuxer));
-        ret = -1;
-        goto fail;
-    }
+    demuxer_open_input(is->demuxer, NULL);
+    demuxer_find_stream_info(is->demuxer, NULL);
 
     /* TODO Provide modifier in demuxer */
     if (ic->pb)
@@ -301,10 +273,6 @@ int read_thread(void *arg)
        Only goto-fail paths set ret to a non-zero error code before jumping. */
     ret = 0;
 fail:
-    /* TODO Move avformat_close_input to Demuxer */
-    if (ic && !demuxer_get_format_context(is->demuxer))
-        avformat_close_input(&ic);
-
     av_packet_free(&pkt);
 
     if (ret != 0)

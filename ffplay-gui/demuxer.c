@@ -28,6 +28,15 @@ static int decode_interrupt_cb(void *ctx)
     return demuxer_is_aborted(demuxer);
 }
 
+static void print_error(const char *filename, int err)
+{
+    char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
+    av_strerror(err, errbuf, sizeof(errbuf));
+    av_log(NULL, AV_LOG_ERROR, "%s: %s\n", filename, errbuf);
+}
+
+
+
 Demuxer *demuxer_create(const char *input_url)
 {
     if (!input_url)
@@ -90,9 +99,32 @@ void demuxer_free(Demuxer **demuxer)
     *demuxer = NULL;
 }
 
-/**
- * Start the read thread.
- */
+int demuxer_open_input(Demuxer *demuxer, AVDictionary **options)
+{
+    AVDictionary *open_opts = NULL;
+    if (!av_dict_get(open_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
+        av_dict_set(&open_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
+    int err = avformat_open_input(&demuxer->ic, demuxer_get_input_name(demuxer), NULL, &open_opts);
+    av_dict_free(&open_opts);
+    open_opts = NULL;
+    if (err < 0) {
+        print_error(demuxer_get_input_name(demuxer), err);
+        return -1;
+    }
+    return 0;
+}
+
+int demuxer_find_stream_info(Demuxer *demuxer, AVDictionary **options)
+{
+    int err = avformat_find_stream_info(demuxer->ic, NULL);
+    if (err < 0) {
+        av_log(NULL, AV_LOG_WARNING,
+               "%s: could not find codec parameters\n", demuxer_get_input_name(demuxer));
+        return -1;
+    }
+    return 0;
+}
+
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
 {
     if (!demuxer || !read_thread_fn)

@@ -1,19 +1,41 @@
 #ifndef FFPLAY_GUI_DEMUXER_H
 #define FFPLAY_GUI_DEMUXER_H
 
-#include <libavformat/avformat.h>
 #include <SDL_thread.h>
+
+#include <libavformat/avformat.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* Opaque pointer to Demuxer structure */
 typedef struct Demuxer Demuxer;
 
-/* Lifecycle management */
+/*
+ * Create a new Demuxer for the given input URL.
+ */
 Demuxer *demuxer_create(const char *input_url);
+
+/*
+ * Free the resources associated with a Demuxer.
+ */
 void demuxer_free(Demuxer **demuxer);
+
+/*
+ * Getters and setters for Demuxer state.
+ */
+AVFormatContext *demuxer_get_format_context(const Demuxer *demuxer);
+const char      *demuxer_get_input_name(const Demuxer *demuxer);
+
+/*
+ * avformat_open_input() wrapper. Currently `options` are unused.
+ */
+int demuxer_open_input(Demuxer *demuxer, AVDictionary **options);
+
+/*
+ * avformat_find_stream_info() wrapper. Currently `options` are unused.
+ */
+int demuxer_find_stream_info(Demuxer *demuxer, AVDictionary **options);
 
 /* Thread management */
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg);
@@ -28,11 +50,7 @@ int demuxer_is_aborted(const Demuxer *demuxer);
 int demuxer_get_seek_mode(const Demuxer *demuxer);
 void demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode);
 
-/* State accessors - input URL */
-const char *demuxer_get_input_name(const Demuxer *demuxer);
 
-/* State accessors - format context */
-AVFormatContext *demuxer_get_format_context(const Demuxer *demuxer);
 void demuxer_set_ic(Demuxer *demuxer, AVFormatContext *ic);
 
 /* State accessors - realtime */
