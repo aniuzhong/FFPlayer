@@ -10,6 +10,7 @@
 #include <libavfilter/buffersrc.h>
 
 #include "filter.h"
+#include "demuxer.h"
 
 static const struct TextureFormatEntry {
     enum AVPixelFormat format;
@@ -99,7 +100,7 @@ fail:
 }
 
 int configure_video_filters(AVFilterGraph *graph,
-                            AVFormatContext *ic,
+                            Demuxer *demuxer,
                             AVStream *video_st,
                             const char *vfilters,
                             AVFrame *frame,
@@ -111,7 +112,7 @@ int configure_video_filters(AVFilterGraph *graph,
     int ret;
     AVFilterContext *filt_src = NULL, *filt_out = NULL, *last_filter = NULL;
     AVCodecParameters *codecpar = video_st->codecpar;
-    AVRational fr = av_guess_frame_rate(ic, video_st, NULL);
+    AVRational fr = demuxer_guess_frame_rate(demuxer, demuxer_get_stream_index(demuxer, AVMEDIA_TYPE_VIDEO), NULL);
     int nb_pix_fmts = 0;
     int i, j;
     AVBufferSrcParameters *par = av_buffersrc_parameters_alloc();

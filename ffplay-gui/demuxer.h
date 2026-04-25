@@ -1,3 +1,7 @@
+/**
+ * demuxer.h - A wrapper around FFmpeg's AVFormatContext to manage demuxing state and operations.
+ */
+
 #ifndef FFPLAY_GUI_DEMUXER_H
 #define FFPLAY_GUI_DEMUXER_H
 
@@ -132,7 +136,12 @@ int demuxer_get_stream_height(const Demuxer *d, int stream_index);
 /*
  * Guess the sample aspect ratio for the given stream index
  */
-AVRational demuxer_guess_sample_aspect_ratio(const Demuxer *d, int stream_index);
+AVRational demuxer_guess_sample_aspect_ratio(const Demuxer *d, int stream_index, AVFrame *frame);
+
+/*
+ * Guess the frame rate for the given stream index
+ */
+AVRational demuxer_guess_frame_rate(const Demuxer *d, int stream_index, AVFrame *frame);
 
 /**
  * Start read_thread

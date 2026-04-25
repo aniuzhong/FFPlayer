@@ -6,6 +6,7 @@
 #include <libavutil/frame.h>
 
 #include "audio_device.h"
+#include "demuxer.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,7 +14,7 @@ extern "C" {
 
 /* TODO Use pixel format instead of SDL_RendererInfo */
 int configure_video_filters(AVFilterGraph *graph,
-                            AVFormatContext *ic,
+                            Demuxer *demuxer,
                             AVStream *video_st,
                             const char *vfilters,
                             AVFrame *frame,

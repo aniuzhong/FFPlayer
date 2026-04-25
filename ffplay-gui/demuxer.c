@@ -7,6 +7,7 @@
 #include <libavutil/mem.h>
 #include <libavformat/avformat.h>
 #include <libavutil/rational.h>
+#include <libavutil/frame.h>
 
 #include "demuxer.h"
 
@@ -290,7 +291,7 @@ int demuxer_should_use_byte_seek(Demuxer* demuxer)
 
 double demuxer_get_max_gap(Demuxer* demuxer)
 {
-    AVFormatContext *ic = demuxer_get_format_context(demuxer);
+    AVFormatContext *ic = demuxer->ic;
     if (ic->iformat->flags & AVFMT_TS_DISCONT)
         return 10.0;   // Unstable timestamps: be strict
     return 3600.0;     // Stable timestamps: be lenient
@@ -301,7 +302,7 @@ int demuxer_is_realtime(Demuxer *demuxer)
     if (!demuxer)
         return -1;
 
-    AVFormatContext *s = demuxer_get_format_context(demuxer);
+    AVFormatContext *s = demuxer->ic;
     if (!s)
         return -1;
 
@@ -450,7 +451,7 @@ int demuxer_get_stream_height(const Demuxer *d, int stream_index)
     return st->codecpar->height;
 }
 
-AVRational demuxer_guess_sample_aspect_ratio(const Demuxer *d, int stream_index)
+AVRational demuxer_guess_sample_aspect_ratio(const Demuxer *d, int stream_index, AVFrame *frame)
 {
     AVFormatContext *ic = d->ic;
     if (!ic || stream_index < 0 || stream_index >= ic->nb_streams)
@@ -458,7 +459,18 @@ AVRational demuxer_guess_sample_aspect_ratio(const Demuxer *d, int stream_index)
     AVStream *st = ic->streams[stream_index];
     if (!st)
         return (AVRational){0, 1};
-    return av_guess_sample_aspect_ratio(ic, st, NULL);
+    return av_guess_sample_aspect_ratio(ic, st, frame);
+}
+
+AVRational demuxer_guess_frame_rate(const Demuxer *d, int stream_index, AVFrame *frame)
+{
+    AVFormatContext *ic = d->ic;
+    if (!ic || stream_index < 0 || stream_index >= ic->nb_streams)
+        return (AVRational){0, 1};
+    AVStream *st = ic->streams[stream_index];
+    if (!st)
+        return (AVRational){0, 1};
+    return av_guess_frame_rate(ic, st, frame);
 }
 
 int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)

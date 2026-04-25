@@ -13,10 +13,9 @@ static int open_stream_components(VideoState *is)
 
     is->show_mode = SHOW_MODE_NONE;
     if (demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO) >= 0) {
-        AVRational sar = demuxer_guess_sample_aspect_ratio(is->demuxer, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO));
+        AVRational sar = demuxer_guess_sample_aspect_ratio(is->demuxer, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO), NULL);
         int width = demuxer_get_stream_width(is->demuxer, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO));
         int height = demuxer_get_stream_height(is->demuxer, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO));
-        // if (codecpar->width && is->on_frame_size_changed)
         if (width && height && is->on_frame_size_changed)
             is->on_frame_size_changed(is->frame_size_opaque, width, height, sar);
     }
