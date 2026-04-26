@@ -3,9 +3,9 @@
 
 #include "demuxer.h"
 #include "video_state.h"
-#include "stream.h"
 #include "packet_queue.h"
 #include "read_thread.h"
+#include "stream.h"
 
 static int open_stream_components(VideoState *is)
 {

@@ -123,12 +123,12 @@ int demuxer_remote_play(Demuxer *d);
  */
 int demuxer_remote_pause(Demuxer *d);
 
-/*
+/**
  * ic -> streams -> index -> codecpar -> width
  */
 int demuxer_get_stream_width(const Demuxer *d, int stream_index);
 
-/*
+/**
  * ic -> streams -> index -> codecpar -> height
  */
 int demuxer_get_stream_height(const Demuxer *d, int stream_index);
@@ -143,10 +143,26 @@ AVRational demuxer_guess_sample_aspect_ratio(const Demuxer *d, int stream_index,
  */
 AVRational demuxer_guess_frame_rate(const Demuxer *d, int stream_index, AVFrame *frame);
 
-/*
+/**
  * Seek to timestamp ts.
  */
 int demuxer_seek_file(Demuxer *d, int stream_index, int64_t min_ts, int64_t ts, int64_t max_ts, int flags);
+
+/**
+ * Get the duration of the media file in seconds.
+ */
+double demuxer_get_duration_seconds(Demuxer *d);
+
+/**
+ * Check if the current stream supports seeking.
+ * Returns 1 if seekable (VOD/File), 0 otherwise (Live stream).
+ */
+int demuxer_stream_is_seekable(const Demuxer *d);
+
+/**
+ * Get the current byte progress of the stream, or -1.0f if not available.
+ */
+float demuxer_get_byte_progress(const Demuxer *d);
 
 /**
  * Start read_thread

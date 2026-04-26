@@ -32,6 +32,7 @@ double stream_get_master_clock(VideoState *is)
 
 void stream_seek(VideoState *is, int64_t pos, int64_t rel, int by_bytes)
 {
+    // Throttle multiple seek requests
     if (!is->seek_req) {
         is->seek_pos = pos;
         is->seek_rel = rel;
@@ -270,10 +271,7 @@ double stream_get_duration(const VideoState *is)
 {
     if (!is)
         return -1.0;
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
-    if (!ic || ic->duration <= 0)
-        return -1.0;
-    return ic->duration / (double)AV_TIME_BASE;
+    return demuxer_get_duration_seconds(is->demuxer);
 }
 
 int stream_is_eof(const VideoState *is)
@@ -309,27 +307,14 @@ int stream_can_seek(const VideoState *is)
 {
     if (!is)
         return 0;
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
-    if (!ic)
-        return 0;
-    if (ic->duration > 0)
-        return 1;
-    return ic->pb && avio_size(ic->pb) > 0;
+    return demuxer_stream_is_seekable(is->demuxer);
 }
 
 float stream_get_byte_progress(const VideoState *is)
 {
-    int64_t size, pos;
     if (!is)
         return -1.0f;
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
-    if (!ic || !ic->pb)
-        return -1.0f;
-    size = avio_size(ic->pb);
-    pos = avio_tell(ic->pb);
-    if (size > 0 && pos >= 0)
-        return av_clipf((float)pos / (float)size, 0.0f, 1.0f);
-    return -1.0f;
+    return demuxer_get_byte_progress(is->demuxer);
 }
 
 void stream_cycle_audio(VideoState *is)
@@ -464,6 +449,8 @@ VideoState *stream_open(const char *filename,
                         void (*frame_size_changed_cb)(void *opaque, int width, int height, AVRational sar),
                         void *frame_size_opaque)
 {
+    // TODO: stream_prepare
+
     if (!filename || !audio_device || !renderer_info)
         return NULL;
 
@@ -530,9 +517,9 @@ VideoState *stream_open(const char *filename,
     audio_visualizer_bind(is->audio_visualizer, is->audio_pipeline,
                           &is->paused, (int *)&is->show_mode);
 
-    // TODO: stream_prepare (AVFormatContext allocation, avformat_open_input, avformat_find_stream_info)
 
     // TODO: stream_start (fire read thread)
+
     if (demuxer_start(is->demuxer, read_thread, is) < 0) {
         av_log(NULL, AV_LOG_FATAL, "Failed to start demuxer thread\n");
         goto fail;

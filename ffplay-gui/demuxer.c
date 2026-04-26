@@ -490,6 +490,38 @@ int demuxer_seek_file(Demuxer *d, int stream_index, int64_t min_ts, int64_t ts, 
     return avformat_seek_file(d->ic, stream_index, min_ts, ts, max_ts, flags);
 }
 
+double demuxer_get_duration_seconds(Demuxer *d)
+{
+    if (!d || !d->ic || d->ic->duration <= 0)
+        return -1.0;
+    return d->ic->duration / (double)AV_TIME_BASE;
+}
+
+int demuxer_stream_is_seekable(const Demuxer *d)
+{
+    if (!d || !d->ic)
+        return 0;
+
+    // If the duration is known, the stream is generally seekable
+    if (d->ic->duration > 0)
+        return 1;
+
+    // Fallback: check if the underlying I/O layer has a finite size
+    // (Useful for local files with missing duration metadata)
+    return d->ic->pb && avio_size(d->ic->pb) > 0;
+}
+
+float demuxer_get_byte_progress(const Demuxer *d)
+{
+    if (!d || !d->ic || !d->ic->pb)
+        return -1.0f;
+    int64_t size = avio_size(d->ic->pb);
+    int64_t pos = avio_tell(d->ic->pb);
+    if (size > 0 && pos >= 0)
+        return av_clipf((float)pos / (float)size, 0.0f, 1.0f);
+    return -1.0f;
+}
+
 void demuxer_stop(Demuxer *demuxer)
 {
     if (!demuxer)
