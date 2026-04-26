@@ -1,4 +1,5 @@
 #include <math.h>
+#include <string.h>
 
 #include <libavutil/error.h>
 #include <libavutil/time.h>
@@ -445,13 +446,14 @@ void stream_seek_relative(VideoState *is, double incr_seconds)
 
 VideoState *stream_open(const char *filename,
                         AudioDevice *audio_device,
-                        const SDL_RendererInfo *renderer_info,
+                        const enum AVPixelFormat *supported_pix_fmts,
+                        int nb_supported_pix_fmts,
                         void (*frame_size_changed_cb)(void *opaque, int width, int height, AVRational sar),
                         void *frame_size_opaque)
 {
     // TODO: stream_prepare
 
-    if (!filename || !audio_device || !renderer_info)
+    if (!filename || !audio_device || !supported_pix_fmts || nb_supported_pix_fmts <= 0)
         return NULL;
 
     VideoState *is = av_mallocz(sizeof(VideoState));
@@ -471,7 +473,8 @@ VideoState *stream_open(const char *filename,
 
     is->audio_device = audio_device;
     audio_device_set_open_cb(audio_device, audio_pipeline_open);
-    is->renderer_info = *renderer_info;
+    is->nb_supported_pix_fmts = FFMIN(nb_supported_pix_fmts, (int)FF_ARRAY_ELEMS(is->supported_pix_fmts));
+    memcpy(is->supported_pix_fmts, supported_pix_fmts, is->nb_supported_pix_fmts * sizeof(is->supported_pix_fmts[0]));
 
     is->on_frame_size_changed = frame_size_changed_cb;
     is->frame_size_opaque = frame_size_opaque;

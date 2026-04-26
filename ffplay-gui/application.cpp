@@ -172,7 +172,11 @@ int Application::Execute()
     SDL_SetWindowTitle(window_, "ffplay-gui");
 
     player_ = ffplayer_create(&audio_device_);
-    ffplayer_set_renderer_info(player_, &video_renderer_ctx_.renderer_info);
+    {
+        enum AVPixelFormat pix_fmts[32];
+        int nb = video_renderer_get_supported_pixel_formats(&video_renderer_ctx_, pix_fmts, 32);
+        ffplayer_set_supported_pixel_formats(player_, pix_fmts, nb);
+    }
     ffplayer_set_frame_size_callback(player_, Application::OnFrameSizeChanged, this);
     InitImGui();
 

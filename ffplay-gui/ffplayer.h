@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include <libavutil/frame.h>
+#include <libavutil/pixfmt.h>
 #include <libavutil/rational.h>
 #include <libavcodec/avcodec.h>
 
@@ -125,11 +126,13 @@ void ffplayer_request_refresh(FFPlayer *p);
 int  ffplayer_is_video_open(const FFPlayer *p);
 
 /**
- * Set renderer info for video filter pixel format selection.
- * Pass a pointer to SDL_RendererInfo (cast to void*).
+ * Set the list of pixel formats that the renderer supports.
+ * The filter chain will restrict output to these formats.
  * Must be called before ffplayer_open().
  */
-void ffplayer_set_renderer_info(FFPlayer *p, const void *renderer_info);
+void ffplayer_set_supported_pixel_formats(FFPlayer *p,
+                                          const enum AVPixelFormat *pix_fmts,
+                                          int nb_pix_fmts);
 
 /**
  * Callback: invoked from the video thread when the coded frame size changes.

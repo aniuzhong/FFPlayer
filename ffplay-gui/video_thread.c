@@ -78,7 +78,6 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
 int video_thread(void *arg)
 {
     VideoState *is = (VideoState *)arg;
-    const SDL_RendererInfo *renderer_info = &is->renderer_info;
     AVFrame *frame = av_frame_alloc();
     double pts;
     double duration;
@@ -121,12 +120,13 @@ int video_thread(void *arg)
                 ret = AVERROR(ENOMEM);
                 goto the_end;
             }
-            if (!renderer_info || !renderer_info->num_texture_formats) {
+            if (!is->nb_supported_pix_fmts) {
                 ret = AVERROR(EINVAL);
                 goto the_end;
             }
             if ((ret = configure_video_filters(graph, is->demuxer, is->video_st, NULL,
-                                               frame, renderer_info, &is->in_video_filter, &is->out_video_filter)) < 0) {
+                                               frame, is->supported_pix_fmts, is->nb_supported_pix_fmts,
+                                               &is->in_video_filter, &is->out_video_filter)) < 0) {
                 is->quit_request = 1;
                 goto the_end;
             }

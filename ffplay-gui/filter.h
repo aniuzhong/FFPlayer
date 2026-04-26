@@ -12,13 +12,13 @@
 extern "C" {
 #endif
 
-/* TODO Use pixel format instead of SDL_RendererInfo */
 int configure_video_filters(AVFilterGraph *graph,
                             Demuxer *demuxer,
                             AVStream *video_st,
                             const char *vfilters,
                             AVFrame *frame,
-                            const SDL_RendererInfo *renderer_info,
+                            const enum AVPixelFormat *pix_fmts,
+                            int nb_pix_fmts,
                             AVFilterContext **in_filter,
                             AVFilterContext **out_filter);
 int configure_audio_filters(AVFilterGraph **agraph,

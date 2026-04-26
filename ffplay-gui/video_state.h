@@ -71,7 +71,8 @@ typedef struct VideoState {
     AVFilterGraph *agraph;
     Demuxer *demuxer;
     AudioDevice *audio_device;
-    SDL_RendererInfo renderer_info;
+    enum AVPixelFormat supported_pix_fmts[32];
+    int nb_supported_pix_fmts;
     void (*on_frame_size_changed)(void *opaque, int width, int height, AVRational sar);
     void *frame_size_opaque;
     void (*on_step_frame)(struct VideoState *is);
