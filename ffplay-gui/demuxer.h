@@ -26,24 +26,84 @@ Demuxer *demuxer_create(const char *input_url);
 void demuxer_free(Demuxer **demuxer);
 
 /**
- * Getters and setters for Demuxer state.
+ * Get the AVFormatContext associated with the demuxer.
  */
 AVFormatContext *demuxer_get_format_context(const Demuxer *demuxer);
-const char      *demuxer_get_input_name(const Demuxer *demuxer);
-int              demuxer_is_eof(const Demuxer *demuxer);
-void             demuxer_set_eof(Demuxer *demuxer, int eof);
-int              demuxer_get_seek_mode(const Demuxer *demuxer);
-void             demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode);
-void             demuxer_request_abort(Demuxer *demuxer);
-int              demuxer_is_aborted(const Demuxer *demuxer);
-double           demuxer_get_max_frame_duration(const Demuxer *demuxer);
-void             demuxer_set_max_frame_duration(Demuxer *demuxer, double max_frame_duration);
-double *         demuxer_get_max_frame_duration_ptr(Demuxer *demuxer);
-SDL_cond *       demuxer_get_continue_read_thread(const Demuxer *demuxer);
-int              demuxer_get_queue_attachments_req(const Demuxer *demuxer);
-void             demuxer_set_queue_attachments_req(Demuxer *demuxer, int req);
-int              demuxer_get_read_pause_return(const Demuxer *demuxer);
-void             demuxer_set_read_pause_return(Demuxer *demuxer, int ret);
+
+/**
+ * Get the input name (URL or file path) of the demuxer.
+ */
+const char *demuxer_get_input_name(const Demuxer *demuxer);
+
+/**
+ * Check if the demuxer has reached the end of the file.
+ */
+int demuxer_is_eof(const Demuxer *demuxer);
+
+/**
+ * Set the EOF (End Of File) state of the demuxer.
+ */
+void demuxer_set_eof(Demuxer *demuxer, int eof);
+
+/**
+ * Get the current seek mode of the demuxer.
+ */
+int demuxer_get_seek_mode(const Demuxer *demuxer);
+
+/**
+ * Set the seek mode for the demuxer.
+ */
+void demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode);
+
+/**
+ * Request the demuxer to abort its current operation.
+ */
+void demuxer_request_abort(Demuxer *demuxer);
+
+/**
+ * Check if the demuxer operation has been aborted.
+ */
+int demuxer_is_aborted(const Demuxer *demuxer);
+
+/**
+ * Get the maximum frame duration allowed by the demuxer.
+ */
+double demuxer_get_max_frame_duration(const Demuxer *demuxer);
+
+/**
+ * Set the maximum frame duration for the demuxer.
+ */
+void demuxer_set_max_frame_duration(Demuxer *demuxer, double max_frame_duration);
+
+/**
+ * Get the pointer to the maximum frame duration variable.
+ */
+double * demuxer_get_max_frame_duration_ptr(Demuxer *demuxer);
+
+/**
+ * Get the SDL condition variable used to signal the read thread to continue.
+ */
+SDL_cond * demuxer_get_continue_read_thread(const Demuxer *demuxer);
+
+/**
+ * Get the status of the queue attachments request.
+ */
+int demuxer_get_queue_attachments_req(const Demuxer *demuxer);
+
+/**
+ * Set the status for the queue attachments request.
+ */
+void demuxer_set_queue_attachments_req(Demuxer *demuxer, int req);
+
+/**
+ * Get the return value from the last read pause operation.
+ */
+int demuxer_get_read_pause_return(const Demuxer *demuxer);
+
+/**
+ * Set the return value for the read pause operation.
+ */
+void demuxer_set_read_pause_return(Demuxer *demuxer, int ret);
 
 /**
  * avformat_open_input() wrapper. Currently `options` are unused.

@@ -50,14 +50,14 @@ enum {
 extern "C" {
 #endif
 
-/*
+/**
  * Context binding
  */
 void av_sync_bind(AvSync *sync, Clock *audclk, Clock *vidclk, Clock *extclk,
                   PacketQueue *audioq, PacketQueue *videoq, AVStream **audio_st,
                   int *audio_stream, int *video_stream, double *max_frame_duration);
 
-/*
+/**
  * Master-clock query
  */
 int get_master_sync_type(const AvSync *sync);
@@ -72,7 +72,7 @@ double av_sync_compute_frame_delay(const AvSync *sync, Frame *lastvp, Frame *vp)
 double compute_target_delay(double delay, const AvSync *sync);
 double vp_duration(const AvSync *sync, Frame *vp, Frame *nextvp);
 
-/*
+/**
  * Clock update helpers
  */
 void update_video_pts(AvSync *sync, double pts, int serial);
@@ -84,7 +84,7 @@ void av_sync_update_audclk_from_callback(AvSync *sync, double audio_clock, int a
                                          int64_t audio_callback_time);
 void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return);
 
-/*
+/**
  * Decision helpers
  */
 double av_sync_audio_master_diff(const AvSync *sync);
