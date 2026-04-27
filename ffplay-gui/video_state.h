@@ -1,6 +1,7 @@
 #ifndef FFPLAY_GUI_VIDEO_STATE_H
 #define FFPLAY_GUI_VIDEO_STATE_H
 
+#include <libavutil/buffer.h>
 #include <libswscale/swscale.h>
 #include <libavformat/avformat.h>
 #include <libavfilter/avfilter.h>
@@ -73,6 +74,9 @@ typedef struct VideoState {
     AudioDevice *audio_device;
     enum AVPixelFormat supported_pix_fmts[32];
     int nb_supported_pix_fmts;
+    /* Owning ref. NULL when hardware acceleration is disabled or
+     * unavailable; non-NULL frames will then take the SW filter path. */
+    AVBufferRef *hw_device_ctx;
     void (*on_frame_size_changed)(void *opaque, int width, int height, AVRational sar);
     void *frame_size_opaque;
     void (*on_step_frame)(struct VideoState *is);

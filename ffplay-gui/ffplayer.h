@@ -14,6 +14,7 @@
 #define FFPLAY_GUI_FFPLAYER_H
 
 #include <stdint.h>
+#include <libavutil/buffer.h>
 #include <libavutil/frame.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/rational.h>
@@ -494,6 +495,28 @@ int ffplayer_is_video_open(const FFPlayer *p);
 void ffplayer_set_supported_pixel_formats(FFPlayer *p,
                                           const enum AVPixelFormat *pix_fmts,
                                           int nb_pix_fmts);
+
+/**
+ * @brief Provide a hardware device context for zero-copy decoding.
+ *
+ * When set, the player installs a get_format callback on the video
+ * decoder that prefers AV_PIX_FMT_D3D11 (or any other format owned by
+ * @p hw_device_ctx). Decoded frames then live on the GPU and are
+ * forwarded directly to the renderer, bypassing the CPU-side filter
+ * graph for the hardware path.
+ *
+ * The reference is duplicated (av_buffer_ref); the caller retains
+ * ownership of @p hw_device_ctx and is free to release it after this
+ * call returns.
+ *
+ * Pass NULL to clear a previously-installed device context. Must be
+ * called before ffplayer_open().
+ *
+ * @param[in] p FFPlayer instance.
+ * @param[in] hw_device_ctx Borrowed AVBufferRef to an AVHWDeviceContext,
+ *                          or NULL to disable hardware acceleration.
+ */
+void ffplayer_set_hw_device_ctx(FFPlayer *p, AVBufferRef *hw_device_ctx);
 
 /**
  * @brief Callback invoked from the video thread when the coded frame size changes.

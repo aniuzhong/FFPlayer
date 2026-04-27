@@ -5,6 +5,7 @@
 #include <d3d11.h>
 #include <dxgi.h>
 
+#include <libavutil/buffer.h>
 #include <libavutil/frame.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/rational.h>
@@ -26,19 +27,33 @@ typedef struct VideoRendererD3D11 {
     IDXGISwapChain          *swap_chain;
     ID3D11RenderTargetView  *rtv;
 
-    /* Pipeline state for textured-quad rendering */
+    /* HW acceleration: shared with libavcodec D3D11VA decoder.
+     * Owned by the renderer; bound to ->device. The application
+     * forwards a borrowed reference to FFPlayer for zero-copy decoding. */
+    AVBufferRef             *hw_device_ref;
+
+    /* Pipeline state shared by BGRA / NV12 paths */
     ID3D11VertexShader      *vertex_shader;
-    ID3D11PixelShader       *pixel_shader;
+    ID3D11PixelShader       *pixel_shader;       /* BGRA sampling */
+    ID3D11PixelShader       *pixel_shader_nv12;  /* NV12 -> RGB */
     ID3D11InputLayout       *input_layout;
     ID3D11SamplerState      *sampler;
     ID3D11Buffer            *vertex_buffer;
     ID3D11BlendState        *blend_state;
 
-    /* Video texture (BGRA) */
+    /* SW BGRA upload texture (sw decode + sws -> BGRA) */
     ID3D11Texture2D         *vid_texture;
     ID3D11ShaderResourceView *vid_srv;
     int vid_tex_width;
     int vid_tex_height;
+
+    /* HW NV12 SRV cache, lazily populated per array slice.
+     * Invalidated when the underlying decoder texture array changes
+     * (e.g. on resolution / hwframes pool reallocation). */
+    ID3D11Texture2D          *nv12_array;
+    ID3D11ShaderResourceView **nv12_srv_y;
+    ID3D11ShaderResourceView **nv12_srv_uv;
+    int                       nv12_array_size;
 
     /* Subtitle texture (BGRA with alpha) */
     ID3D11Texture2D         *sub_texture;
@@ -47,7 +62,7 @@ typedef struct VideoRendererD3D11 {
     int sub_tex_height;
     struct SwsContext        *sub_convert_ctx;
 
-    /* Frame-tracking to avoid redundant uploads */
+    /* Frame-tracking to avoid redundant uploads (SW path) */
     const uint8_t *last_vid_data;
     int last_flip_v;
 
@@ -57,6 +72,13 @@ typedef struct VideoRendererD3D11 {
 
 int  video_renderer_d3d11_init(VideoRendererD3D11 *vr, HWND hwnd);
 void video_renderer_d3d11_shutdown(VideoRendererD3D11 *vr);
+
+/**
+ * Borrowed pointer to the renderer-owned D3D11VA AVHWDeviceContext.
+ * Caller must av_buffer_ref() if it intends to outlive the renderer.
+ * Returns NULL if hardware acceleration could not be initialized.
+ */
+AVBufferRef *video_renderer_d3d11_get_hw_device_ctx(const VideoRendererD3D11 *vr);
 
 void video_renderer_d3d11_set_default_window_size(VideoRendererD3D11 *vr,
                                                    int screen_width, int screen_height,

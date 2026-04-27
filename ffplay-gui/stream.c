@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include <libavutil/error.h>
+#include <libavutil/hwcontext.h>
 #include <libavutil/time.h>
 #include <libavformat/avio.h>
 #include <libavfilter/buffersink.h>
@@ -29,6 +30,62 @@ double stream_get_master_clock(VideoState *is)
     if (!is)
         return NAN;
     return get_master_clock(&is->av_sync);
+}
+
+/* AVCodecContext::get_format callback: when the decoder offers a
+ * hardware-backed pixel format that matches our renderer-owned
+ * AVHWDeviceContext (D3D11VA today), we accept it and pre-allocate the
+ * frames pool ourselves. Pre-allocating lets us tag the surfaces with
+ * D3D11_BIND_SHADER_RESOURCE so the renderer can bind them to a pixel
+ * shader directly. If no hw format is offered we fall back to the
+ * first sw format and the legacy filter path keeps working. */
+static enum AVPixelFormat ffplay_get_format(AVCodecContext *ctx,
+                                            const enum AVPixelFormat *pix_fmts)
+{
+    const enum AVPixelFormat *p;
+    if (!ctx->hw_device_ctx)
+        return pix_fmts[0];
+
+    AVHWDeviceContext *dctx = (AVHWDeviceContext *)ctx->hw_device_ctx->data;
+
+    for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
+        int matches = 0;
+#ifdef AV_HWDEVICE_TYPE_D3D11VA
+        if (*p == AV_PIX_FMT_D3D11 && dctx->type == AV_HWDEVICE_TYPE_D3D11VA)
+            matches = 1;
+#endif
+        if (!matches)
+            continue;
+
+        AVBufferRef *frames_ref = av_hwframe_ctx_alloc(ctx->hw_device_ctx);
+        if (!frames_ref)
+            break;
+
+        AVHWFramesContext *frames_ctx = (AVHWFramesContext *)frames_ref->data;
+        frames_ctx->format    = *p;
+        frames_ctx->sw_format = AV_PIX_FMT_NV12;
+        /* Decoders typically need the surfaces aligned to the macroblock
+         * size; 32 covers 16x16 (h264) and 64x64 (hevc) safely. */
+        frames_ctx->width     = FFALIGN(ctx->coded_width  > 0 ? ctx->coded_width  : ctx->width,  32);
+        frames_ctx->height    = FFALIGN(ctx->coded_height > 0 ? ctx->coded_height : ctx->height, 32);
+        /* Pool size: enough headroom for ref frames + display queue. */
+        frames_ctx->initial_pool_size = 20;
+
+        if (av_hwframe_ctx_init(frames_ref) < 0) {
+            av_buffer_unref(&frames_ref);
+            continue;
+        }
+
+        av_buffer_unref(&ctx->hw_frames_ctx);
+        ctx->hw_frames_ctx = frames_ref;
+        return *p;
+    }
+
+    av_log(ctx, AV_LOG_WARNING,
+           "No hardware pixel format from %s could be matched against the "
+           "available device context; falling back to software decoding.\n",
+           avcodec_get_name(ctx->codec_id));
+    return pix_fmts[0];
 }
 
 void stream_seek(VideoState *is, int64_t pos, int64_t rel, int by_bytes)
@@ -448,6 +505,7 @@ VideoState *stream_open(const char *filename,
                         AudioDevice *audio_device,
                         const enum AVPixelFormat *supported_pix_fmts,
                         int nb_supported_pix_fmts,
+                        AVBufferRef *hw_device_ctx,
                         void (*frame_size_changed_cb)(void *opaque, int width, int height, AVRational sar),
                         void *frame_size_opaque)
 {
@@ -475,6 +533,11 @@ VideoState *stream_open(const char *filename,
     audio_device_set_open_cb(audio_device, audio_pipeline_open);
     is->nb_supported_pix_fmts = FFMIN(nb_supported_pix_fmts, (int)FF_ARRAY_ELEMS(is->supported_pix_fmts));
     memcpy(is->supported_pix_fmts, supported_pix_fmts, is->nb_supported_pix_fmts * sizeof(is->supported_pix_fmts[0]));
+    /* Take our own reference so the caller can release theirs while
+     * playback is still alive. We hand out further refs to each
+     * AVCodecContext that wants hwaccel. */
+    if (hw_device_ctx)
+        is->hw_device_ctx = av_buffer_ref(hw_device_ctx);
 
     is->on_frame_size_changed = frame_size_changed_cb;
     is->frame_size_opaque = frame_size_opaque;
@@ -588,6 +651,16 @@ int stream_component_open(VideoState *is, int stream_index)
         av_dict_set(&opts, "threads", "auto", 0);
 
     av_dict_set(&opts, "flags", "+copy_opaque", AV_DICT_MULTIKEY);
+
+    /* Wire up hardware acceleration before opening the codec so that
+     * libavcodec's hwaccel lookup picks our get_format hook on the very
+     * first packet. The reference is duplicated; each AVCodecContext
+     * owns its own ref-count and releases it via avcodec_free_context. */
+    if (avctx->codec_type == AVMEDIA_TYPE_VIDEO && is->hw_device_ctx) {
+        avctx->hw_device_ctx = av_buffer_ref(is->hw_device_ctx);
+        if (avctx->hw_device_ctx)
+            avctx->get_format = ffplay_get_format;
+    }
 
     if ((ret = avcodec_open2(avctx, codec, &opts)) < 0) {
         goto fail;
@@ -751,6 +824,7 @@ void stream_close(VideoState *is)
     clock_destroy(&is->audclk);
     clock_destroy(&is->vidclk);
     clock_destroy(&is->extclk);
+    av_buffer_unref(&is->hw_device_ctx);
     av_free(is);
 }
 

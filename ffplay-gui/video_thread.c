@@ -75,6 +75,17 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
     return got_picture;
 }
 
+/* Hardware-decoded frames keep their pixel data on the GPU and have no
+ * representation that the libavfilter graph could meaningfully consume
+ * (filtering would require av_hwframe_transfer_data, which defeats the
+ * whole zero-copy goal). For the HW path we therefore push the frame
+ * straight into the picture queue, computing pts/duration directly from
+ * the stream's time base and the demuxer-guessed frame rate. */
+static int hw_frame_has_data(const AVFrame *frame)
+{
+    return frame && frame->hw_frames_ctx && frame->data[0];
+}
+
 int video_thread(void *arg)
 {
     VideoState *is = (VideoState *)arg;
@@ -101,6 +112,25 @@ int video_thread(void *arg)
             goto the_end;
         if (!ret)
             continue;
+
+        /* ---- HW (zero-copy) path: bypass libavfilter entirely. -- */
+        if (hw_frame_has_data(frame)) {
+            FrameData *fd = frame->opaque_ref ? (FrameData *)frame->opaque_ref->data : NULL;
+            AVRational hw_tb = is->video_st->time_base;
+            AVRational hw_fr = demuxer_guess_frame_rate(is->demuxer,
+                demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO), frame);
+
+            duration = (hw_fr.num && hw_fr.den ? av_q2d((AVRational){hw_fr.den, hw_fr.num}) : 0);
+            pts      = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(hw_tb);
+
+            /* SAR may be unset on hwframes; the get_video_frame() helper
+             * already applied demuxer_guess_sample_aspect_ratio. */
+            ret = queue_picture(is, frame, pts, duration, fd ? fd->pkt_pos : -1, is->viddec.pkt_serial);
+            av_frame_unref(frame);
+            if (ret < 0)
+                goto the_end;
+            continue;
+        }
 
         if (last_w != frame->width
             || last_h != frame->height

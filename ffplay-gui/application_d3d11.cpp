@@ -237,6 +237,11 @@ int ApplicationD3D11::Execute()
         int nb = video_renderer_d3d11_get_supported_pixel_formats(&video_renderer_ctx_, pix_fmts, 32);
         ffplayer_set_supported_pixel_formats(player_, pix_fmts, nb);
     }
+    /* Forward the renderer-owned D3D11VA hwdevice context so the video
+     * decoder can produce GPU-resident NV12 surfaces that the renderer
+     * samples directly (zero-copy). The setter takes its own ref. */
+    if (AVBufferRef *hw = video_renderer_d3d11_get_hw_device_ctx(&video_renderer_ctx_))
+        ffplayer_set_hw_device_ctx(player_, hw);
     ffplayer_set_frame_size_callback(player_, ApplicationD3D11::OnFrameSizeChanged, this);
     InitImGui();
 

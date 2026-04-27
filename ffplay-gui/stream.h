@@ -2,6 +2,7 @@
 #define FFPLAY_GUI_STREAM_H
 
 #include <stdint.h>
+#include <libavutil/buffer.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/rational.h>
 
@@ -35,6 +36,7 @@ VideoState *stream_open(const char *filename,
                         AudioDevice *audio_device,
                         const enum AVPixelFormat *supported_pix_fmts,
                         int nb_supported_pix_fmts,
+                        AVBufferRef *hw_device_ctx,
                         void (*frame_size_changed_cb)(void *opaque, int width, int height, AVRational sar),
                         void *frame_size_opaque);
 int stream_has_enough_packets(struct AVStream *st, int stream_id, PacketQueue *queue);
