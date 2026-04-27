@@ -146,27 +146,79 @@ if(WIN32)
   endif()
 endif()
 
+# ======================================================================
+# Third-party dependencies (shared by ffplayer and ffplay-gui)
+# ======================================================================
+
+FetchContent_Declare(
+  imgui
+  GIT_REPOSITORY https://github.com/ocornut/imgui.git
+  GIT_TAG master
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(imgui)
+FetchContent_GetProperties(imgui SOURCE_DIR IMGUI_BUILD_DIR)
+if(NOT IMGUI_BUILD_DIR OR NOT EXISTS "${IMGUI_BUILD_DIR}/imgui.h")
+  message(FATAL_ERROR "Failed to fetch imgui sources from '${IMGUI_BUILD_DIR}'.")
+endif()
+
+FetchContent_Declare(
+  spdlog
+  GIT_REPOSITORY https://github.com/gabime/spdlog.git
+  GIT_TAG v1.x
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(spdlog)
+
+# ======================================================================
+# ffplayer — static library: playback logic, scheduling, sync, demux
+# ======================================================================
+set(_ffplayer_lib_target ffplayer)
+add_library(${_ffplayer_lib_target} STATIC
+  ffplay-gui/ffplayer/ffplayer.c
+  ffplay-gui/ffplayer/audio_device.c
+  ffplay-gui/ffplayer/audio_pipeline.c
+  ffplay-gui/ffplayer/audio_thread.c
+  ffplay-gui/ffplayer/audio_visualizer.c
+  ffplay-gui/ffplayer/av_sync.c
+  ffplay-gui/ffplayer/clock.c
+  ffplay-gui/ffplayer/decoder.c
+  ffplay-gui/ffplayer/demuxer.c
+  ffplay-gui/ffplayer/filter.c
+  ffplay-gui/ffplayer/frame_queue.c
+  ffplay-gui/ffplayer/packet_queue.c
+  ffplay-gui/ffplayer/read_thread.c
+  ffplay-gui/ffplayer/stream.c
+  ffplay-gui/ffplayer/subtitle_thread.c
+  ffplay-gui/ffplayer/video_thread.c)
+
+set_target_properties(${_ffplayer_lib_target} PROPERTIES
+  C_STANDARD 99)
+target_include_directories(${_ffplayer_lib_target} PUBLIC
+  "${CMAKE_SOURCE_DIR}/ffplay-gui/ffplayer"
+  "${FFMPEG_PREBUILT_ROOT}/include")
+target_include_directories(${_ffplayer_lib_target} PRIVATE
+  "${FFPLAY_GEN_DIR}")
+
+if(MSVC)
+  target_compile_options(${_ffplayer_lib_target} PRIVATE /utf-8)
+endif()
+
+foreach(_lib IN LISTS _ffmpeg_libnames)
+  ffplay_find_ffmpeg_lib(_ff_lib "${_lib}")
+  target_link_libraries(${_ffplayer_lib_target} PUBLIC "${_ff_lib}")
+endforeach()
+
+target_link_libraries(${_ffplayer_lib_target} PUBLIC SDL2::SDL2)
+
+# ======================================================================
+# ffplay-gui — D3D11 rendering frontend (Win32 only)
+# ======================================================================
 set(_ffplay_gui_target ffplay-gui)
 add_executable(${_ffplay_gui_target} WIN32
   ffplay-gui/main.cpp
   ffplay-gui/application.cpp
-  ffplay-gui/audio_device.c
-  ffplay-gui/audio_pipeline.c
-  ffplay-gui/audio_visualizer.c
-  ffplay-gui/ffplayer.c
-  ffplay-gui/audio_thread.c
-  ffplay-gui/video_thread.c
-  ffplay-gui/video_renderer.c
-  ffplay-gui/subtitle_thread.c
-  ffplay-gui/demuxer.c
-  ffplay-gui/read_thread.c
-  ffplay-gui/clock.c
-  ffplay-gui/av_sync.c
-  ffplay-gui/filter.c
-  ffplay-gui/stream.c
-  ffplay-gui/packet_queue.c
-  ffplay-gui/frame_queue.c
-  ffplay-gui/decoder.c)
+  ffplay-gui/video_renderer.c)
 
 set(_ffplay_gui_default_icon "ffplay-gui/icon/icons8-ffmpeg-48.ico")
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/${_ffplay_gui_default_icon}")
@@ -193,39 +245,18 @@ set_target_properties(${_ffplay_gui_target} PROPERTIES
   CXX_STANDARD 20)
 target_include_directories(${_ffplay_gui_target} PRIVATE
   "${FFPLAY_GEN_DIR}"
-  "${CMAKE_SOURCE_DIR}/src/shim/include"
-  "${CMAKE_SOURCE_DIR}/src"
   "${CMAKE_SOURCE_DIR}/ffplay-gui"
   "${FFMPEG_PREBUILT_ROOT}/include")
 
-FetchContent_Declare(
-  imgui
-  GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG master
-  GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(imgui)
-FetchContent_GetProperties(imgui SOURCE_DIR IMGUI_BUILD_DIR)
-if(NOT IMGUI_BUILD_DIR OR NOT EXISTS "${IMGUI_BUILD_DIR}/imgui.h")
-  message(FATAL_ERROR "Failed to fetch imgui sources from '${IMGUI_BUILD_DIR}'.")
-endif()
-
-FetchContent_Declare(
-  spdlog
-  GIT_REPOSITORY https://github.com/gabime/spdlog.git
-  GIT_TAG v1.x
-  GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(spdlog)
-
+# ImGui sources — Win32 + DX11 backends
 target_sources(${_ffplay_gui_target} PRIVATE
   "${IMGUI_BUILD_DIR}/imgui.cpp"
   "${IMGUI_BUILD_DIR}/imgui_draw.cpp"
   "${IMGUI_BUILD_DIR}/imgui_tables.cpp"
   "${IMGUI_BUILD_DIR}/imgui_widgets.cpp"
   "${IMGUI_BUILD_DIR}/imgui_demo.cpp"
-  "${IMGUI_BUILD_DIR}/backends/imgui_impl_sdl2.cpp"
-  "${IMGUI_BUILD_DIR}/backends/imgui_impl_sdlrenderer2.cpp")
+  "${IMGUI_BUILD_DIR}/backends/imgui_impl_win32.cpp"
+  "${IMGUI_BUILD_DIR}/backends/imgui_impl_dx11.cpp")
 target_include_directories(${_ffplay_gui_target} PRIVATE
   "${IMGUI_BUILD_DIR}"
   "${IMGUI_BUILD_DIR}/backends")
@@ -234,15 +265,11 @@ if(MSVC)
   target_compile_options(${_ffplay_gui_target} PRIVATE /utf-8)
 endif()
 
-foreach(_lib IN LISTS _ffmpeg_libnames)
-  ffplay_find_ffmpeg_lib(_ff_lib "${_lib}")
-  target_link_libraries(${_ffplay_gui_target} PRIVATE "${_ff_lib}")
-endforeach()
-
-target_link_libraries(${_ffplay_gui_target} PRIVATE SDL2::SDL2 spdlog::spdlog)
+target_link_libraries(${_ffplay_gui_target} PRIVATE
+  ${_ffplayer_lib_target} spdlog::spdlog
+  d3d11 dxgi dxguid d3dcompiler shell32 comdlg32)
 
 if(WIN32)
-  target_link_libraries(${_ffplay_gui_target} PRIVATE shell32 comdlg32)
   set(_out_gui "$<TARGET_FILE_DIR:${_ffplay_gui_target}>")
   ffplay_resolve_sdl2_dll(_sdl_dll_gui)
   if(_sdl_dll_gui)
@@ -255,95 +282,6 @@ if(WIN32)
     file(GLOB _gyan_dlls_gui LIST_DIRECTORIES false "${FFMPEG_PREBUILT_ROOT}/bin/*.dll")
     foreach(_d IN LISTS _gyan_dlls_gui)
       ffplay_copy_runtime_dll("${_ffplay_gui_target}" "${_d}" "${_out_gui}")
-    endforeach()
-  endif()
-endif()
-
-# ======================================================================
-# ffplay-gui-d3d11 — D3D11 rendering backend (Win32 only)
-# ======================================================================
-if(WIN32)
-  set(_ffplay_gui_d3d11_target ffplay-gui-d3d11)
-  add_executable(${_ffplay_gui_d3d11_target} WIN32
-    ffplay-gui/main.cpp
-    ffplay-gui/application_d3d11.cpp
-    ffplay-gui/audio_device.c
-    ffplay-gui/audio_pipeline.c
-    ffplay-gui/audio_visualizer.c
-    ffplay-gui/ffplayer.c
-    ffplay-gui/audio_thread.c
-    ffplay-gui/video_thread.c
-    ffplay-gui/video_renderer_d3d11.c
-    ffplay-gui/subtitle_thread.c
-    ffplay-gui/demuxer.c
-    ffplay-gui/read_thread.c
-    ffplay-gui/clock.c
-    ffplay-gui/av_sync.c
-    ffplay-gui/filter.c
-    ffplay-gui/stream.c
-    ffplay-gui/packet_queue.c
-    ffplay-gui/frame_queue.c
-    ffplay-gui/decoder.c)
-
-  set_target_properties(${_ffplay_gui_d3d11_target} PROPERTIES
-    OUTPUT_NAME "ffplay-gui-d3d11"
-    CXX_STANDARD 20)
-  target_compile_definitions(${_ffplay_gui_d3d11_target} PRIVATE FFPLAYER_USE_D3D11)
-  target_include_directories(${_ffplay_gui_d3d11_target} PRIVATE
-    "${FFPLAY_GEN_DIR}"
-    "${CMAKE_SOURCE_DIR}/src/shim/include"
-    "${CMAKE_SOURCE_DIR}/src"
-    "${CMAKE_SOURCE_DIR}/ffplay-gui"
-    "${FFMPEG_PREBUILT_ROOT}/include")
-
-  # ImGui sources — Win32 + DX11 backends
-  target_sources(${_ffplay_gui_d3d11_target} PRIVATE
-    "${IMGUI_BUILD_DIR}/imgui.cpp"
-    "${IMGUI_BUILD_DIR}/imgui_draw.cpp"
-    "${IMGUI_BUILD_DIR}/imgui_tables.cpp"
-    "${IMGUI_BUILD_DIR}/imgui_widgets.cpp"
-    "${IMGUI_BUILD_DIR}/imgui_demo.cpp"
-    "${IMGUI_BUILD_DIR}/backends/imgui_impl_win32.cpp"
-    "${IMGUI_BUILD_DIR}/backends/imgui_impl_dx11.cpp")
-  target_include_directories(${_ffplay_gui_d3d11_target} PRIVATE
-    "${IMGUI_BUILD_DIR}"
-    "${IMGUI_BUILD_DIR}/backends")
-
-  if(MSVC)
-    target_compile_options(${_ffplay_gui_d3d11_target} PRIVATE /utf-8)
-  endif()
-
-  foreach(_lib IN LISTS _ffmpeg_libnames)
-    ffplay_find_ffmpeg_lib(_ff_lib "${_lib}")
-    target_link_libraries(${_ffplay_gui_d3d11_target} PRIVATE "${_ff_lib}")
-  endforeach()
-
-  # SDL2 for audio + timer; D3D11 / DXGI / D3DCompiler for rendering
-  target_link_libraries(${_ffplay_gui_d3d11_target} PRIVATE
-    SDL2::SDL2 spdlog::spdlog
-    d3d11 dxgi dxguid d3dcompiler shell32 comdlg32)
-
-  # Icon
-  if(FFPLAY_GUI_ICON)
-    get_filename_component(_d3d11_icon_abs "${FFPLAY_GUI_ICON}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
-    if(EXISTS "${_d3d11_icon_abs}")
-      string(REPLACE "/" "\\\\" _d3d11_icon_rc_path "${_d3d11_icon_abs}")
-      set(_d3d11_icon_rc "${FFPLAY_GEN_DIR}/ffplay-gui-d3d11-icon.rc")
-      file(WRITE "${_d3d11_icon_rc}" "IDI_APP_ICON ICON \"${_d3d11_icon_rc_path}\"\n")
-      target_sources(${_ffplay_gui_d3d11_target} PRIVATE "${_d3d11_icon_rc}")
-    endif()
-  endif()
-
-  # Copy runtime DLLs
-  set(_out_d3d11 "$<TARGET_FILE_DIR:${_ffplay_gui_d3d11_target}>")
-  ffplay_resolve_sdl2_dll(_sdl_dll_d3d11)
-  if(_sdl_dll_d3d11)
-    ffplay_copy_runtime_dll("${_ffplay_gui_d3d11_target}" "${_sdl_dll_d3d11}" "${_out_d3d11}")
-  endif()
-  if(EXISTS "${FFMPEG_PREBUILT_ROOT}/bin")
-    file(GLOB _gyan_dlls_d3d11 LIST_DIRECTORIES false "${FFMPEG_PREBUILT_ROOT}/bin/*.dll")
-    foreach(_d IN LISTS _gyan_dlls_d3d11)
-      ffplay_copy_runtime_dll("${_ffplay_gui_d3d11_target}" "${_d}" "${_out_d3d11}")
     endforeach()
   endif()
 endif()

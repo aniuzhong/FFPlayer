@@ -4,15 +4,18 @@
 #include <cstdint>
 #include <string>
 
+#include <windows.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include "audio_device.h"
-#include "video_renderer.h"
-#include "ffplayer.h"
+#include "ffplayer/audio_device.h"
+#include "ffplayer/ffplayer.h"
 #ifdef __cplusplus
 }
 #endif
+
+#include "video_renderer.h"
 
 class Application {
 public:
@@ -29,21 +32,22 @@ private:
     bool OpenFileDialogAndPlay();
     [[noreturn]] void DoExit();
     void ToggleFullScreen();
-    void RefreshLoopWaitEvent(SDL_Event *event);
-    void InitWindowAndRenderer();
-    void ConfigureVideoRenderer();
+    bool InitWindow();
+    void InitRenderer();
     void DisplayVideo();
-    void EventLoop();
+    void MainLoop();
+    void HandleKeyDown(WPARAM wParam);
 
     static void OnFrameSizeChanged(void *opaque, int width, int height, AVRational sar);
+    static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 private:
-    SDL_Window *window_ = nullptr;
-    SDL_Renderer *renderer_ = nullptr;
+    HWND hwnd_ = nullptr;
     AudioDevice audio_device_ = {};
     int64_t cursor_last_shown_ = 0;
     int cursor_hidden_ = 0;
     int is_full_screen_ = 0;
+    WINDOWPLACEMENT wp_before_fullscreen_ = {};
     FFPlayer *player_ = nullptr;
     VideoRenderer video_renderer_ctx_ = {};
     int video_open_done_ = 0;
@@ -58,6 +62,7 @@ private:
     bool log_auto_scroll_ = true;
     bool log_wrap_lines_ = true;
     int log_level_filter_ = 0;
+    bool quit_requested_ = false;
 };
 
 #endif
