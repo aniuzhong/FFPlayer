@@ -65,3 +65,9 @@ cmake --build build --config Release
 - 进行了初步的模块化
 
 ![Image of ffplay-gui.exe](images/v0.1.2.jpg)
+
+## **`v0.1.3`**
+
+该版本解耦了 `ffplay-gui` 中 `FFPlayer` 和 **渲染**，并提供了一套基础的 API。
+
+- 增加了 **D3D11渲染器** 和 **D3D11界面版**的 `ffplay-gui-d3d11.exe`
