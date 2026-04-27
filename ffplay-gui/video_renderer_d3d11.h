@@ -16,6 +16,30 @@
 extern "C" {
 #endif
 
+/* Output color path. Step 1 only ships SDR sRGB (HDR/DV content is
+ * tone-mapped to BT.709 SDR via BT.2390 EETF); HDR10_PQ is the
+ * extension point for a future Step 2 that detects an HDR-capable
+ * monitor with Windows HDR enabled and switches the swapchain to
+ * R10G10B10A2_UNORM + DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020. */
+typedef enum RendererColorTarget {
+    RENDERER_COLOR_TARGET_SDR_SRGB = 0,
+    RENDERER_COLOR_TARGET_HDR10_PQ = 1,
+} RendererColorTarget;
+
+/* Cached frame-side color metadata that drives the constant buffer
+ * used by the NV12/P010 sampling shader. We rebuild the cbuffer only
+ * when one of these fields changes between frames, since 99% of
+ * frames in a stream share the same color metadata. */
+typedef struct RendererColorState {
+    int   colorspace;          /* AVColorSpace */
+    int   color_primaries;     /* AVColorPrimaries */
+    int   color_trc;           /* AVColorTransferCharacteristic */
+    int   color_range;         /* AVColorRange */
+    float peak_nits;           /* mastering display max luminance */
+    float max_cll_nits;        /* AV_FRAME_DATA_CONTENT_LIGHT_LEVEL.MaxCLL */
+    int   target;              /* RendererColorTarget */
+} RendererColorState;
+
 typedef struct VideoRendererD3D11 {
     HWND hwnd;
     int default_width;
@@ -56,6 +80,13 @@ typedef struct VideoRendererD3D11 {
     ID3D11ShaderResourceView **nv12_srv_y;
     ID3D11ShaderResourceView **nv12_srv_uv;
     int                       nv12_array_size;
+
+    /* Color-management constant buffer + memoized state. Bound to
+     * b0 of the NV12/P010 pixel shader. */
+    ID3D11Buffer             *color_cb;
+    RendererColorState        color_state;
+    int                       color_target;
+    int                       color_state_dirty;
 
     /* Subtitle texture (BGRA with alpha) */
     ID3D11Texture2D         *sub_texture;

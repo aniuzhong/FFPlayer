@@ -827,6 +827,68 @@ void stream_component_close(VideoState *is, int stream_index)
     }
 }
 
+int stream_video_reopen_software(VideoState *is)
+{
+    if (!is || is->video_stream < 0)
+        return AVERROR(EINVAL);
+
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
+    if (!ic || is->video_stream >= (int)ic->nb_streams)
+        return AVERROR(EINVAL);
+
+    AVStream *st = ic->streams[is->video_stream];
+
+    /* Build a fresh, software-only decoder context that mirrors what
+     * stream_component_open does for video streams, MINUS the hwaccel
+     * wiring. We deliberately do not touch is->hw_device_ctx so that a
+     * subsequent stream_open (different file) can still try HW first. */
+    AVCodecContext *avctx = avcodec_alloc_context3(NULL);
+    if (!avctx)
+        return AVERROR(ENOMEM);
+
+    int ret = avcodec_parameters_to_context(avctx, st->codecpar);
+    if (ret < 0)
+        goto fail;
+
+    avctx->pkt_timebase = st->time_base;
+
+    const AVCodec *codec = avcodec_find_decoder(avctx->codec_id);
+    if (!codec) {
+        ret = AVERROR(EINVAL);
+        goto fail;
+    }
+    avctx->codec_id = codec->id;
+    avctx->lowres   = 0;
+
+    AVDictionary *opts = NULL;
+    av_dict_set(&opts, "threads", "auto", 0);
+    av_dict_set(&opts, "flags",   "+copy_opaque", AV_DICT_MULTIKEY);
+
+    ret = avcodec_open2(avctx, codec, &opts);
+    av_dict_free(&opts);
+    if (ret < 0)
+        goto fail;
+
+    /* Hot-swap. video_thread is the sole consumer of viddec.avctx and
+     * is the caller of this function, so no lock is needed. The old
+     * context's references (hw_device_ctx + hw_frames_ctx + opened
+     * codec internals) are released by avcodec_free_context. */
+    avcodec_free_context(&is->viddec.avctx);
+    is->viddec.avctx     = avctx;
+    is->viddec.finished  = 0;
+    is->viddec.packet_pending = 0;
+    av_packet_unref(is->viddec.pkt);
+
+    av_log(NULL, AV_LOG_WARNING,
+           "Video decoder hot-swapped to software path (codec=%s).\n",
+           avcodec_get_name(avctx->codec_id));
+    return 0;
+
+fail:
+    avcodec_free_context(&avctx);
+    return ret;
+}
+
 void stream_close(VideoState *is)
 {
     if (!is)
