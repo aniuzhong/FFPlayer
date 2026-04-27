@@ -210,11 +210,40 @@ static void release_nv12_srv_cache(VideoRendererD3D11 *vr)
     }
     vr->nv12_array = NULL;
     vr->nv12_array_size = 0;
+    vr->nv12_array_format = DXGI_FORMAT_UNKNOWN;
 }
 
-/* Lazily create one R8 (Y) and one R8G8 (UV) SRV per array slice on the
- * decoder's NV12 texture array, so each decoded surface can be sampled
- * directly without any GPU-side copy. */
+/* Map an NV12-family decoder texture format to the per-plane SRV
+ * formats we sample with. Y is single-channel UNORM, UV is two-channel
+ * UNORM at half resolution; bit-depth follows the underlying surface
+ * (NV12 -> 8-bit, P010/P016 -> 16-bit). For P010 the 10-bit data sits
+ * in the high bits of the R16 channel, so an R16_UNORM view returns
+ * floats scaled by 1023*64 / 65535 ~ 0.9990 of the true 10-bit value
+ * which our BT.709 shader treats as a near-imperceptible luma dim. */
+static int dxgi_nv12_plane_formats(DXGI_FORMAT tex_fmt,
+                                   DXGI_FORMAT *out_y,
+                                   DXGI_FORMAT *out_uv)
+{
+    switch (tex_fmt) {
+        case DXGI_FORMAT_NV12:
+            *out_y  = DXGI_FORMAT_R8_UNORM;
+            *out_uv = DXGI_FORMAT_R8G8_UNORM;
+            return 0;
+        case DXGI_FORMAT_P010:
+        case DXGI_FORMAT_P016:
+            *out_y  = DXGI_FORMAT_R16_UNORM;
+            *out_uv = DXGI_FORMAT_R16G16_UNORM;
+            return 0;
+        default:
+            return -1;
+    }
+}
+
+/* Lazily create one Y and one UV plane SRV per array slice on the
+ * decoder's NV12-family texture array, so each decoded surface can be
+ * sampled directly without any GPU-side copy. The SRV element formats
+ * are chosen from the underlying texture's DXGI format so we transparently
+ * support 8-bit (NV12) and 10/12-bit (P010/P016) HW frames. */
 static int ensure_nv12_srvs(VideoRendererD3D11 *vr,
                             ID3D11Texture2D *tex, UINT slice,
                             ID3D11ShaderResourceView **out_y,
@@ -228,7 +257,17 @@ static int ensure_nv12_srvs(VideoRendererD3D11 *vr,
         tex->lpVtbl->GetDesc(tex, &desc);
         if (desc.ArraySize == 0)
             return -1;
-        vr->nv12_array_size = (int)desc.ArraySize;
+
+        DXGI_FORMAT fmt_y, fmt_uv;
+        if (dxgi_nv12_plane_formats(desc.Format, &fmt_y, &fmt_uv) < 0) {
+            av_log(NULL, AV_LOG_ERROR,
+                   "Unsupported D3D11 hwframe DXGI format 0x%x; cannot create SRV.\n",
+                   (unsigned)desc.Format);
+            return -1;
+        }
+
+        vr->nv12_array_size   = (int)desc.ArraySize;
+        vr->nv12_array_format = desc.Format;
         vr->nv12_srv_y  = av_calloc(desc.ArraySize, sizeof(*vr->nv12_srv_y));
         vr->nv12_srv_uv = av_calloc(desc.ArraySize, sizeof(*vr->nv12_srv_uv));
         if (!vr->nv12_srv_y || !vr->nv12_srv_uv) {
@@ -241,9 +280,13 @@ static int ensure_nv12_srvs(VideoRendererD3D11 *vr,
     if (slice >= (UINT)vr->nv12_array_size)
         return -1;
 
+    DXGI_FORMAT fmt_y, fmt_uv;
+    if (dxgi_nv12_plane_formats(vr->nv12_array_format, &fmt_y, &fmt_uv) < 0)
+        return -1;
+
     if (!vr->nv12_srv_y[slice]) {
         D3D11_SHADER_RESOURCE_VIEW_DESC svd = {0};
-        svd.Format = DXGI_FORMAT_R8_UNORM;
+        svd.Format = fmt_y;
         svd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
         svd.Texture2DArray.MostDetailedMip = 0;
         svd.Texture2DArray.MipLevels = 1;
@@ -251,12 +294,16 @@ static int ensure_nv12_srvs(VideoRendererD3D11 *vr,
         svd.Texture2DArray.ArraySize = 1;
         hr = vr->device->lpVtbl->CreateShaderResourceView(vr->device,
                 (ID3D11Resource *)tex, &svd, &vr->nv12_srv_y[slice]);
-        if (FAILED(hr))
+        if (FAILED(hr)) {
+            av_log(NULL, AV_LOG_ERROR,
+                   "CreateShaderResourceView(Y plane fmt=0x%x slice=%u) failed: 0x%lx\n",
+                   (unsigned)fmt_y, slice, (unsigned long)hr);
             return -1;
+        }
     }
     if (!vr->nv12_srv_uv[slice]) {
         D3D11_SHADER_RESOURCE_VIEW_DESC svd = {0};
-        svd.Format = DXGI_FORMAT_R8G8_UNORM;
+        svd.Format = fmt_uv;
         svd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
         svd.Texture2DArray.MostDetailedMip = 0;
         svd.Texture2DArray.MipLevels = 1;
@@ -264,8 +311,12 @@ static int ensure_nv12_srvs(VideoRendererD3D11 *vr,
         svd.Texture2DArray.ArraySize = 1;
         hr = vr->device->lpVtbl->CreateShaderResourceView(vr->device,
                 (ID3D11Resource *)tex, &svd, &vr->nv12_srv_uv[slice]);
-        if (FAILED(hr))
+        if (FAILED(hr)) {
+            av_log(NULL, AV_LOG_ERROR,
+                   "CreateShaderResourceView(UV plane fmt=0x%x slice=%u) failed: 0x%lx\n",
+                   (unsigned)fmt_uv, slice, (unsigned long)hr);
             return -1;
+        }
     }
 
     *out_y  = vr->nv12_srv_y[slice];

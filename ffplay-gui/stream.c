@@ -3,9 +3,15 @@
 
 #include <libavutil/error.h>
 #include <libavutil/hwcontext.h>
+#include <libavutil/pixdesc.h>
 #include <libavutil/time.h>
 #include <libavformat/avio.h>
 #include <libavfilter/buffersink.h>
+
+#ifdef _WIN32
+#include <d3d11.h>
+#include <libavutil/hwcontext_d3d11va.h>
+#endif
 
 #include "audio_device.h"
 #include "packet_queue.h"
@@ -57,24 +63,52 @@ static enum AVPixelFormat ffplay_get_format(AVCodecContext *ctx,
         if (!matches)
             continue;
 
-        AVBufferRef *frames_ref = av_hwframe_ctx_alloc(ctx->hw_device_ctx);
-        if (!frames_ref)
-            break;
-
-        AVHWFramesContext *frames_ctx = (AVHWFramesContext *)frames_ref->data;
-        frames_ctx->format    = *p;
-        frames_ctx->sw_format = AV_PIX_FMT_NV12;
-        /* Decoders typically need the surfaces aligned to the macroblock
-         * size; 32 covers 16x16 (h264) and 64x64 (hevc) safely. */
-        frames_ctx->width     = FFALIGN(ctx->coded_width  > 0 ? ctx->coded_width  : ctx->width,  32);
-        frames_ctx->height    = FFALIGN(ctx->coded_height > 0 ? ctx->coded_height : ctx->height, 32);
-        /* Pool size: enough headroom for ref frames + display queue. */
-        frames_ctx->initial_pool_size = 20;
-
-        if (av_hwframe_ctx_init(frames_ref) < 0) {
+        /* Let the codec pick width/height/sw_format that match the
+         * stream (NV12 for 8-bit, P010 for 10-bit HDR, P016 for 12-bit).
+         * We then only override the bind flags so the resulting
+         * texture-array surfaces are simultaneously decoder targets and
+         * shader-sample sources, completing the zero-copy path. */
+        AVBufferRef *frames_ref = NULL;
+        int ret = avcodec_get_hw_frames_parameters(ctx, ctx->hw_device_ctx,
+                                                   *p, &frames_ref);
+        if (ret < 0 || !frames_ref) {
+            av_log(ctx, AV_LOG_WARNING,
+                   "avcodec_get_hw_frames_parameters(%s) failed: %d\n",
+                   av_get_pix_fmt_name(*p), ret);
             av_buffer_unref(&frames_ref);
             continue;
         }
+
+        AVHWFramesContext *frames_ctx = (AVHWFramesContext *)frames_ref->data;
+        if (frames_ctx->initial_pool_size < 20)
+            frames_ctx->initial_pool_size = 20;
+
+#ifdef _WIN32
+        if (dctx->type == AV_HWDEVICE_TYPE_D3D11VA) {
+            AVD3D11VAFramesContext *d3d_frames =
+                (AVD3D11VAFramesContext *)frames_ctx->hwctx;
+            /* OR-in the renderer-required flags; preserve any flags the
+             * codec already requested for itself. */
+            d3d_frames->BindFlags |= D3D11_BIND_DECODER |
+                                     D3D11_BIND_SHADER_RESOURCE;
+        }
+#endif
+
+        if (av_hwframe_ctx_init(frames_ref) < 0) {
+            av_log(ctx, AV_LOG_WARNING,
+                   "Failed to init HW frames pool (%s, %dx%d sw=%s).\n",
+                   av_get_pix_fmt_name(frames_ctx->format),
+                   frames_ctx->width, frames_ctx->height,
+                   av_get_pix_fmt_name(frames_ctx->sw_format));
+            av_buffer_unref(&frames_ref);
+            continue;
+        }
+
+        av_log(ctx, AV_LOG_INFO,
+               "Hardware frames pool ready: %s %dx%d, sw_format=%s.\n",
+               av_get_pix_fmt_name(frames_ctx->format),
+               frames_ctx->width, frames_ctx->height,
+               av_get_pix_fmt_name(frames_ctx->sw_format));
 
         av_buffer_unref(&ctx->hw_frames_ctx);
         ctx->hw_frames_ctx = frames_ref;

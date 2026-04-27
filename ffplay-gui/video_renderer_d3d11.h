@@ -47,10 +47,12 @@ typedef struct VideoRendererD3D11 {
     int vid_tex_width;
     int vid_tex_height;
 
-    /* HW NV12 SRV cache, lazily populated per array slice.
-     * Invalidated when the underlying decoder texture array changes
-     * (e.g. on resolution / hwframes pool reallocation). */
+    /* HW NV12-family (NV12/P010/P016) SRV cache, lazily populated per
+     * array slice. Invalidated when the underlying decoder texture array
+     * changes (e.g. resolution / hwframes pool reallocation, or a
+     * different stream is opened). */
     ID3D11Texture2D          *nv12_array;
+    DXGI_FORMAT               nv12_array_format;
     ID3D11ShaderResourceView **nv12_srv_y;
     ID3D11ShaderResourceView **nv12_srv_uv;
     int                       nv12_array_size;
