@@ -1,8 +1,6 @@
 #include <math.h>
 #include <stdio.h>
 
-#include <SDL.h>
-
 #include <libavutil/bprint.h>
 #include <libavutil/display.h>
 #include <libavutil/mem.h>
@@ -10,39 +8,15 @@
 #include <libavfilter/buffersrc.h>
 
 #include "filter.h"
+#include "demuxer.h"
 
-static const struct TextureFormatEntry {
-    enum AVPixelFormat format;
-    int texture_fmt;
-} sdl_texture_format_map[] = {
-    { AV_PIX_FMT_RGB8,           SDL_PIXELFORMAT_RGB332 },
-    { AV_PIX_FMT_RGB444,         SDL_PIXELFORMAT_RGB444 },
-    { AV_PIX_FMT_RGB555,         SDL_PIXELFORMAT_RGB555 },
-    { AV_PIX_FMT_BGR555,         SDL_PIXELFORMAT_BGR555 },
-    { AV_PIX_FMT_RGB565,         SDL_PIXELFORMAT_RGB565 },
-    { AV_PIX_FMT_BGR565,         SDL_PIXELFORMAT_BGR565 },
-    { AV_PIX_FMT_RGB24,          SDL_PIXELFORMAT_RGB24 },
-    { AV_PIX_FMT_BGR24,          SDL_PIXELFORMAT_BGR24 },
-    { AV_PIX_FMT_0RGB32,         SDL_PIXELFORMAT_RGB888 },
-    { AV_PIX_FMT_0BGR32,         SDL_PIXELFORMAT_BGR888 },
-    { AV_PIX_FMT_NE(RGB0, 0BGR), SDL_PIXELFORMAT_RGBX8888 },
-    { AV_PIX_FMT_NE(BGR0, 0RGB), SDL_PIXELFORMAT_BGRX8888 },
-    { AV_PIX_FMT_RGB32,          SDL_PIXELFORMAT_ARGB8888 },
-    { AV_PIX_FMT_RGB32_1,        SDL_PIXELFORMAT_RGBA8888 },
-    { AV_PIX_FMT_BGR32,          SDL_PIXELFORMAT_ABGR8888 },
-    { AV_PIX_FMT_BGR32_1,        SDL_PIXELFORMAT_BGRA8888 },
-    { AV_PIX_FMT_YUV420P,        SDL_PIXELFORMAT_IYUV },
-    { AV_PIX_FMT_YUYV422,        SDL_PIXELFORMAT_YUY2 },
-    { AV_PIX_FMT_UYVY422,        SDL_PIXELFORMAT_UYVY },
-};
-
-static enum AVColorSpace sdl_supported_color_spaces[] = {
+static enum AVColorSpace supported_color_spaces[] = {
     AVCOL_SPC_BT709,
     AVCOL_SPC_BT470BG,
     AVCOL_SPC_SMPTE170M,
 };
 
-static enum AVAlphaMode sdl_supported_alpha_modes[] = {
+static enum AVAlphaMode supported_alpha_modes[] = {
     AVALPHA_MODE_UNSPECIFIED,
     AVALPHA_MODE_STRAIGHT,
 };
@@ -99,34 +73,23 @@ fail:
 }
 
 int configure_video_filters(AVFilterGraph *graph,
-                            AVFormatContext *ic,
+                            Demuxer *demuxer,
                             AVStream *video_st,
                             const char *vfilters,
                             AVFrame *frame,
-                            const SDL_RendererInfo *renderer_info,
+                            const enum AVPixelFormat *pix_fmts,
+                            int nb_pix_fmts,
                             AVFilterContext **in_filter,
                             AVFilterContext **out_filter)
 {
-    enum AVPixelFormat pix_fmts[FF_ARRAY_ELEMS(sdl_texture_format_map)];
     int ret;
     AVFilterContext *filt_src = NULL, *filt_out = NULL, *last_filter = NULL;
     AVCodecParameters *codecpar = video_st->codecpar;
-    AVRational fr = av_guess_frame_rate(ic, video_st, NULL);
-    int nb_pix_fmts = 0;
-    int i, j;
+    AVRational fr = demuxer_guess_frame_rate(demuxer, demuxer_get_stream_index(demuxer, AVMEDIA_TYPE_VIDEO), NULL);
     AVBufferSrcParameters *par = av_buffersrc_parameters_alloc();
 
     if (!par)
         return AVERROR(ENOMEM);
-
-    for (i = 0; i < renderer_info->num_texture_formats; i++) {
-        for (j = 0; j < FF_ARRAY_ELEMS(sdl_texture_format_map); j++) {
-            if (renderer_info->texture_formats[i] == sdl_texture_format_map[j].texture_fmt) {
-                pix_fmts[nb_pix_fmts++] = sdl_texture_format_map[j].format;
-                break;
-            }
-        }
-    }
 
     graph->scale_sws_opts = av_strdup("");
     filt_src = avfilter_graph_alloc_filter(graph, avfilter_get_by_name("buffer"), "ffplay_buffer");
@@ -160,9 +123,9 @@ int configure_video_filters(AVFilterGraph *graph,
 
     if ((ret = av_opt_set_array(filt_out, "pixel_formats", AV_OPT_SEARCH_CHILDREN, 0, nb_pix_fmts, AV_OPT_TYPE_PIXEL_FMT, pix_fmts)) < 0)
         goto fail;
-    if ((ret = av_opt_set_array(filt_out, "colorspaces", AV_OPT_SEARCH_CHILDREN, 0, FF_ARRAY_ELEMS(sdl_supported_color_spaces), AV_OPT_TYPE_INT, sdl_supported_color_spaces)) < 0)
+    if ((ret = av_opt_set_array(filt_out, "colorspaces", AV_OPT_SEARCH_CHILDREN, 0, FF_ARRAY_ELEMS(supported_color_spaces), AV_OPT_TYPE_INT, supported_color_spaces)) < 0)
         goto fail;
-    if ((ret = av_opt_set_array(filt_out, "alphamodes", AV_OPT_SEARCH_CHILDREN, 0, FF_ARRAY_ELEMS(sdl_supported_alpha_modes), AV_OPT_TYPE_INT, sdl_supported_alpha_modes)) < 0)
+    if ((ret = av_opt_set_array(filt_out, "alphamodes", AV_OPT_SEARCH_CHILDREN, 0, FF_ARRAY_ELEMS(supported_alpha_modes), AV_OPT_TYPE_INT, supported_alpha_modes)) < 0)
         goto fail;
     ret = avfilter_init_dict(filt_out, NULL);
     if (ret < 0)

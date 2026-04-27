@@ -4,12 +4,15 @@
 #include "stream.h"
 #include "ffplayer.h"
 
+#define FFPLAYER_MAX_PIX_FMTS 32
+
 struct FFPlayer {
     AudioDevice   *audio_device;
     VideoState    *is;
     ffplayer_frame_size_cb frame_size_cb;
     void *frame_size_opaque;
-    SDL_RendererInfo renderer_info;
+    enum AVPixelFormat supported_pix_fmts[FFPLAYER_MAX_PIX_FMTS];
+    int nb_supported_pix_fmts;
 };
 
 static void ffplayer_on_frame_size_changed(void *opaque, int width, int height, AVRational sar)
@@ -52,7 +55,9 @@ int ffplayer_open(FFPlayer *p, const char *url)
         return -1;
     if (p->is)
         ffplayer_close(p);
-    p->is = stream_open(url, p->audio_device, &p->renderer_info, ffplayer_on_frame_size_changed, p);
+    p->is = stream_open(url, p->audio_device,
+                         p->supported_pix_fmts, p->nb_supported_pix_fmts,
+                         ffplayer_on_frame_size_changed, p);
     return p->is ? 0 : -1;
 }
 
@@ -327,11 +332,14 @@ int ffplayer_is_video_open(const FFPlayer *p)
     return stream_is_video_open(p->is);
 }
 
-void ffplayer_set_renderer_info(FFPlayer *p, const void *renderer_info)
+void ffplayer_set_supported_pixel_formats(FFPlayer *p,
+                                          const enum AVPixelFormat *pix_fmts,
+                                          int nb_pix_fmts)
 {
-    if (!p || !renderer_info)
+    if (!p || !pix_fmts || nb_pix_fmts <= 0)
         return;
-    memcpy(&p->renderer_info, renderer_info, sizeof(p->renderer_info));
+    p->nb_supported_pix_fmts = nb_pix_fmts < FFPLAYER_MAX_PIX_FMTS ? nb_pix_fmts : FFPLAYER_MAX_PIX_FMTS;
+    memcpy(p->supported_pix_fmts, pix_fmts, p->nb_supported_pix_fmts * sizeof(p->supported_pix_fmts[0]));
 }
 
 void ffplayer_set_frame_size_callback(FFPlayer *p, ffplayer_frame_size_cb cb, void *opaque)

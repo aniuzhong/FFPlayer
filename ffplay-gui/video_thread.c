@@ -55,7 +55,9 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
         if (frame->pts != AV_NOPTS_VALUE)
             dpts = av_q2d(is->video_st->time_base) * frame->pts;
 
-        frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(demuxer_get_ic(is->demuxer), is->video_st, frame);
+        frame->sample_aspect_ratio = demuxer_guess_sample_aspect_ratio(is->demuxer, 
+                                                                       demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO),
+                                                                       frame);
 
         if (frame->pts != AV_NOPTS_VALUE &&
             av_sync_should_early_drop(&is->av_sync,
@@ -76,13 +78,12 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
 int video_thread(void *arg)
 {
     VideoState *is = (VideoState *)arg;
-    const SDL_RendererInfo *renderer_info = &is->renderer_info;
     AVFrame *frame = av_frame_alloc();
     double pts;
     double duration;
     int ret;
     AVRational tb = is->video_st->time_base;
-    AVRational frame_rate = av_guess_frame_rate(demuxer_get_ic(is->demuxer), is->video_st, NULL);
+    AVRational frame_rate = demuxer_guess_frame_rate(is->demuxer, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO), NULL);
 
     AVFilterGraph *graph = NULL;
     AVFilterContext *filt_out = NULL, *filt_in = NULL;
@@ -119,11 +120,13 @@ int video_thread(void *arg)
                 ret = AVERROR(ENOMEM);
                 goto the_end;
             }
-            if (!renderer_info || !renderer_info->num_texture_formats) {
+            if (!is->nb_supported_pix_fmts) {
                 ret = AVERROR(EINVAL);
                 goto the_end;
             }
-            if ((ret = configure_video_filters(graph, demuxer_get_ic(is->demuxer), is->video_st, NULL, frame, renderer_info, &is->in_video_filter, &is->out_video_filter)) < 0) {
+            if ((ret = configure_video_filters(graph, is->demuxer, is->video_st, NULL,
+                                               frame, is->supported_pix_fmts, is->nb_supported_pix_fmts,
+                                               &is->in_video_filter, &is->out_video_filter)) < 0) {
                 is->quit_request = 1;
                 goto the_end;
             }

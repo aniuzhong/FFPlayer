@@ -7,10 +7,6 @@ include(FetchContent)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(THIRD_PARTY_DIR "${CMAKE_SOURCE_DIR}/third_party" CACHE PATH "Root directory for bundled third-party packages")
-set(FFPLAY_FETCHCONTENT_DIR "${THIRD_PARTY_DIR}/_fetchcontent" CACHE PATH
-  "Directory used by FetchContent to download/extract source dependencies")
-file(MAKE_DIRECTORY "${FFPLAY_FETCHCONTENT_DIR}")
-set(FETCHCONTENT_BASE_DIR "${FFPLAY_FETCHCONTENT_DIR}")
 set(FETCHCONTENT_UPDATES_DISCONNECTED OFF CACHE BOOL
   "Allow FetchContent git dependencies to check updates on configure")
 set(FFMPEG_PREBUILT_ROOT "${THIRD_PARTY_DIR}/ffmpeg-8.1-full_build-shared" CACHE PATH
@@ -259,6 +255,95 @@ if(WIN32)
     file(GLOB _gyan_dlls_gui LIST_DIRECTORIES false "${FFMPEG_PREBUILT_ROOT}/bin/*.dll")
     foreach(_d IN LISTS _gyan_dlls_gui)
       ffplay_copy_runtime_dll("${_ffplay_gui_target}" "${_d}" "${_out_gui}")
+    endforeach()
+  endif()
+endif()
+
+# ======================================================================
+# ffplay-gui-d3d11 — D3D11 rendering backend (Win32 only)
+# ======================================================================
+if(WIN32)
+  set(_ffplay_gui_d3d11_target ffplay-gui-d3d11)
+  add_executable(${_ffplay_gui_d3d11_target} WIN32
+    ffplay-gui/main.cpp
+    ffplay-gui/application_d3d11.cpp
+    ffplay-gui/audio_device.c
+    ffplay-gui/audio_pipeline.c
+    ffplay-gui/audio_visualizer.c
+    ffplay-gui/ffplayer.c
+    ffplay-gui/audio_thread.c
+    ffplay-gui/video_thread.c
+    ffplay-gui/video_renderer_d3d11.c
+    ffplay-gui/subtitle_thread.c
+    ffplay-gui/demuxer.c
+    ffplay-gui/read_thread.c
+    ffplay-gui/clock.c
+    ffplay-gui/av_sync.c
+    ffplay-gui/filter.c
+    ffplay-gui/stream.c
+    ffplay-gui/packet_queue.c
+    ffplay-gui/frame_queue.c
+    ffplay-gui/decoder.c)
+
+  set_target_properties(${_ffplay_gui_d3d11_target} PROPERTIES
+    OUTPUT_NAME "ffplay-gui-d3d11"
+    CXX_STANDARD 20)
+  target_compile_definitions(${_ffplay_gui_d3d11_target} PRIVATE FFPLAYER_USE_D3D11)
+  target_include_directories(${_ffplay_gui_d3d11_target} PRIVATE
+    "${FFPLAY_GEN_DIR}"
+    "${CMAKE_SOURCE_DIR}/src/shim/include"
+    "${CMAKE_SOURCE_DIR}/src"
+    "${CMAKE_SOURCE_DIR}/ffplay-gui"
+    "${FFMPEG_PREBUILT_ROOT}/include")
+
+  # ImGui sources — Win32 + DX11 backends
+  target_sources(${_ffplay_gui_d3d11_target} PRIVATE
+    "${IMGUI_BUILD_DIR}/imgui.cpp"
+    "${IMGUI_BUILD_DIR}/imgui_draw.cpp"
+    "${IMGUI_BUILD_DIR}/imgui_tables.cpp"
+    "${IMGUI_BUILD_DIR}/imgui_widgets.cpp"
+    "${IMGUI_BUILD_DIR}/imgui_demo.cpp"
+    "${IMGUI_BUILD_DIR}/backends/imgui_impl_win32.cpp"
+    "${IMGUI_BUILD_DIR}/backends/imgui_impl_dx11.cpp")
+  target_include_directories(${_ffplay_gui_d3d11_target} PRIVATE
+    "${IMGUI_BUILD_DIR}"
+    "${IMGUI_BUILD_DIR}/backends")
+
+  if(MSVC)
+    target_compile_options(${_ffplay_gui_d3d11_target} PRIVATE /utf-8)
+  endif()
+
+  foreach(_lib IN LISTS _ffmpeg_libnames)
+    ffplay_find_ffmpeg_lib(_ff_lib "${_lib}")
+    target_link_libraries(${_ffplay_gui_d3d11_target} PRIVATE "${_ff_lib}")
+  endforeach()
+
+  # SDL2 for audio + timer; D3D11 / DXGI / D3DCompiler for rendering
+  target_link_libraries(${_ffplay_gui_d3d11_target} PRIVATE
+    SDL2::SDL2 spdlog::spdlog
+    d3d11 dxgi dxguid d3dcompiler shell32 comdlg32)
+
+  # Icon
+  if(FFPLAY_GUI_ICON)
+    get_filename_component(_d3d11_icon_abs "${FFPLAY_GUI_ICON}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
+    if(EXISTS "${_d3d11_icon_abs}")
+      string(REPLACE "/" "\\\\" _d3d11_icon_rc_path "${_d3d11_icon_abs}")
+      set(_d3d11_icon_rc "${FFPLAY_GEN_DIR}/ffplay-gui-d3d11-icon.rc")
+      file(WRITE "${_d3d11_icon_rc}" "IDI_APP_ICON ICON \"${_d3d11_icon_rc_path}\"\n")
+      target_sources(${_ffplay_gui_d3d11_target} PRIVATE "${_d3d11_icon_rc}")
+    endif()
+  endif()
+
+  # Copy runtime DLLs
+  set(_out_d3d11 "$<TARGET_FILE_DIR:${_ffplay_gui_d3d11_target}>")
+  ffplay_resolve_sdl2_dll(_sdl_dll_d3d11)
+  if(_sdl_dll_d3d11)
+    ffplay_copy_runtime_dll("${_ffplay_gui_d3d11_target}" "${_sdl_dll_d3d11}" "${_out_d3d11}")
+  endif()
+  if(EXISTS "${FFMPEG_PREBUILT_ROOT}/bin")
+    file(GLOB _gyan_dlls_d3d11 LIST_DIRECTORIES false "${FFMPEG_PREBUILT_ROOT}/bin/*.dll")
+    foreach(_d IN LISTS _gyan_dlls_d3d11)
+      ffplay_copy_runtime_dll("${_ffplay_gui_d3d11_target}" "${_d}" "${_out_d3d11}")
     endforeach()
   endif()
 endif()

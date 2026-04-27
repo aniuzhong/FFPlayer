@@ -33,6 +33,7 @@ double stream_get_master_clock(VideoState *is)
 
 void stream_seek(VideoState *is, int64_t pos, int64_t rel, int by_bytes)
 {
+    // Throttle multiple seek requests
     if (!is->seek_req) {
         is->seek_pos = pos;
         is->seek_rel = rel;
@@ -229,12 +230,14 @@ int stream_is_video_open(const VideoState *is)
 void stream_seek_to_ratio(VideoState *is, float ratio)
 {
     int64_t ts, size;
-    AVFormatContext *ic;
+
     if (!is)
         return;
-    ic = demuxer_get_ic(is->demuxer);
+
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
     if (!ic)
         return;
+
     ratio = av_clipf(ratio, 0.0f, 1.0f);
     if (demuxer_get_seek_mode(is->demuxer) || ic->duration <= 0) {
         if (!ic->pb)
@@ -254,13 +257,12 @@ void stream_seek_to_ratio(VideoState *is, float ratio)
 double stream_get_position(const VideoState *is)
 {
     double pos;
-    AVFormatContext *ic;
     if (!is)
         return 0.0;
     pos = get_master_clock(&is->av_sync);
     if (isnan(pos))
         return 0.0;
-    ic = demuxer_get_ic(is->demuxer);
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
     if (ic && ic->start_time != AV_NOPTS_VALUE)
         pos -= ic->start_time / (double)AV_TIME_BASE;
     return pos > 0.0 ? pos : 0.0;
@@ -268,13 +270,9 @@ double stream_get_position(const VideoState *is)
 
 double stream_get_duration(const VideoState *is)
 {
-    AVFormatContext *ic;
     if (!is)
         return -1.0;
-    ic = demuxer_get_ic(is->demuxer);
-    if (!ic || ic->duration <= 0)
-        return -1.0;
-    return ic->duration / (double)AV_TIME_BASE;
+    return demuxer_get_duration_seconds(is->demuxer);
 }
 
 int stream_is_eof(const VideoState *is)
@@ -293,10 +291,9 @@ int stream_has_quit_request(const VideoState *is)
 
 int stream_has_chapters(const VideoState *is)
 {
-    AVFormatContext *ic;
     if (!is)
         return 0;
-    ic = demuxer_get_ic(is->demuxer);
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
     return ic && ic->nb_chapters > 1;
 }
 
@@ -309,31 +306,16 @@ const char *stream_get_media_title(const VideoState *is)
 
 int stream_can_seek(const VideoState *is)
 {
-    AVFormatContext *ic;
     if (!is)
         return 0;
-    ic = demuxer_get_ic(is->demuxer);
-    if (!ic)
-        return 0;
-    if (ic->duration > 0)
-        return 1;
-    return ic->pb && avio_size(ic->pb) > 0;
+    return demuxer_stream_is_seekable(is->demuxer);
 }
 
 float stream_get_byte_progress(const VideoState *is)
 {
-    AVFormatContext *ic;
-    int64_t size, pos;
     if (!is)
         return -1.0f;
-    ic = demuxer_get_ic(is->demuxer);
-    if (!ic || !ic->pb)
-        return -1.0f;
-    size = avio_size(ic->pb);
-    pos = avio_tell(ic->pb);
-    if (size > 0 && pos >= 0)
-        return av_clipf((float)pos / (float)size, 0.0f, 1.0f);
-    return -1.0f;
+    return demuxer_get_byte_progress(is->demuxer);
 }
 
 void stream_cycle_audio(VideoState *is)
@@ -394,11 +376,10 @@ void stream_seek_chapter(VideoState *is, int incr)
 {
     int64_t pos;
     int i;
-    AVFormatContext *ic;
 
     if (!is)
         return;
-    ic = demuxer_get_ic(is->demuxer);
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
     if (!ic || !ic->nb_chapters)
         return;
 
@@ -426,11 +407,11 @@ void stream_seek_chapter(VideoState *is, int incr)
 void stream_seek_relative(VideoState *is, double incr_seconds)
 {
     double pos;
-    AVFormatContext *ic;
 
     if (!is)
         return;
-    ic = demuxer_get_ic(is->demuxer);
+
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
     if (!ic)
         return;
 
@@ -465,29 +446,36 @@ void stream_seek_relative(VideoState *is, double incr_seconds)
 
 VideoState *stream_open(const char *filename,
                         AudioDevice *audio_device,
-                        const SDL_RendererInfo *renderer_info,
+                        const enum AVPixelFormat *supported_pix_fmts,
+                        int nb_supported_pix_fmts,
                         void (*frame_size_changed_cb)(void *opaque, int width, int height, AVRational sar),
                         void *frame_size_opaque)
 {
-    VideoState *is;
+    // TODO: stream_prepare
 
-    if (!filename || !audio_device || !renderer_info)
+    if (!filename || !audio_device || !supported_pix_fmts || nb_supported_pix_fmts <= 0)
         return NULL;
 
-    is = av_mallocz(sizeof(VideoState));
+    VideoState *is = av_mallocz(sizeof(VideoState));
     if (!is)
         return NULL;
+
     is->last_video_stream = is->video_stream = -1;
     is->last_audio_stream = is->audio_stream = -1;
     is->last_subtitle_stream = is->subtitle_stream = -1;
+
     is->demuxer = demuxer_create(filename);
     if (!is->demuxer)
         goto fail;
-    is->ytop    = 0;
-    is->xleft   = 0;
+
+    is->ytop = 0;
+    is->xleft = 0;
+
     is->audio_device = audio_device;
     audio_device_set_open_cb(audio_device, audio_pipeline_open);
-    is->renderer_info = *renderer_info;
+    is->nb_supported_pix_fmts = FFMIN(nb_supported_pix_fmts, (int)FF_ARRAY_ELEMS(is->supported_pix_fmts));
+    memcpy(is->supported_pix_fmts, supported_pix_fmts, is->nb_supported_pix_fmts * sizeof(is->supported_pix_fmts[0]));
+
     is->on_frame_size_changed = frame_size_changed_cb;
     is->frame_size_opaque = frame_size_opaque;
     is->on_step_frame = stream_step;
@@ -512,16 +500,11 @@ VideoState *stream_open(const char *filename,
     clock_init_from_packet_queue(is->vidclk, is->videoq);
     clock_init_from_packet_queue(is->audclk, is->audioq);
     clock_init_from_clock(is->extclk, is->extclk);
-    av_sync_bind(&is->av_sync,
-                 is->audclk,
-                 is->vidclk,
-                 is->extclk,
-                 is->audioq,
-                 is->videoq,
-                 &is->audio_st,
-                 &is->audio_stream,
-                 &is->video_stream,
+    av_sync_bind(&is->av_sync, is->audclk, is->vidclk, is->extclk,
+                 is->audioq, is->videoq, &is->audio_st,
+                 &is->audio_stream, &is->video_stream,
                  demuxer_get_max_frame_duration_ptr(is->demuxer));
+
     is->audio_pipeline = audio_pipeline_create();
     if (!is->audio_pipeline)
         goto fail;
@@ -536,6 +519,10 @@ VideoState *stream_open(const char *filename,
         goto fail;
     audio_visualizer_bind(is->audio_visualizer, is->audio_pipeline,
                           &is->paused, (int *)&is->show_mode);
+
+
+    // TODO: stream_start (fire read thread)
+
     if (demuxer_start(is->demuxer, read_thread, is) < 0) {
         av_log(NULL, AV_LOG_FATAL, "Failed to start demuxer thread\n");
         goto fail;
@@ -558,11 +545,8 @@ int stream_has_enough_packets(AVStream *st, int stream_id, PacketQueue *queue)
            (!duration || av_q2d(st->time_base) * duration > 1.0);
 }
 
-
-
 int stream_component_open(VideoState *is, int stream_index)
 {
-    AVFormatContext *ic;
     AVCodecContext *avctx;
     const AVCodec *codec;
     AVDictionary *opts = NULL;
@@ -570,7 +554,7 @@ int stream_component_open(VideoState *is, int stream_index)
     AVChannelLayout ch_layout = { 0 };
     int ret = 0;
     
-    ic = demuxer_get_ic(is->demuxer);
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
     if (!ic || stream_index < 0 || stream_index >= ic->nb_streams)
         return -1;
 
@@ -688,10 +672,9 @@ out:
 
 void stream_component_close(VideoState *is, int stream_index)
 {
-    AVFormatContext *ic;
     AVCodecParameters *codecpar;
 
-    ic = demuxer_get_ic(is->demuxer);
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
     if (!ic || stream_index < 0 || stream_index >= ic->nb_streams)
         return;
     codecpar = ic->streams[stream_index]->codecpar;
@@ -773,14 +756,13 @@ void stream_close(VideoState *is)
 
 void stream_cycle_channel(VideoState *is, int codec_type)
 {
-    AVFormatContext *ic;
     int start_index, stream_index;
     int old_index;
     AVStream *st;
     AVProgram *p = NULL;
     int nb_streams;
 
-    ic = demuxer_get_ic(is->demuxer);
+    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
     if (!ic)
         return;
     nb_streams = ic->nb_streams;

@@ -6,17 +6,19 @@
 #include <libavutil/frame.h>
 
 #include "audio_device.h"
+#include "demuxer.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 int configure_video_filters(AVFilterGraph *graph,
-                            AVFormatContext *ic,
+                            Demuxer *demuxer,
                             AVStream *video_st,
                             const char *vfilters,
                             AVFrame *frame,
-                            const SDL_RendererInfo *renderer_info,
+                            const enum AVPixelFormat *pix_fmts,
+                            int nb_pix_fmts,
                             AVFilterContext **in_filter,
                             AVFilterContext **out_filter);
 int configure_audio_filters(AVFilterGraph **agraph,

@@ -41,6 +41,9 @@ typedef struct VideoRenderer {
 
 void video_renderer_set_default_window_size(VideoRenderer *vr, int screen_width, int screen_height, int width, int height, AVRational sar);
 const SDL_RendererInfo *video_renderer_get_info(const VideoRenderer *vr);
+int video_renderer_get_supported_pixel_formats(const VideoRenderer *vr,
+                                               enum AVPixelFormat *out_fmts,
+                                               int max_fmts);
 int video_renderer_open(VideoRenderer *vr, int *width, int *height);
 void video_renderer_draw_video(VideoRenderer *vr, AVFrame *frame, AVSubtitle *subtitle, int xleft, int ytop, int width, int height);
 void video_renderer_clear(VideoRenderer *vr);

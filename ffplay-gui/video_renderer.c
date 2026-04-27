@@ -296,6 +296,25 @@ const SDL_RendererInfo *video_renderer_get_info(const VideoRenderer *vr)
     return &vr->renderer_info;
 }
 
+int video_renderer_get_supported_pixel_formats(const VideoRenderer *vr,
+                                               enum AVPixelFormat *out_fmts,
+                                               int max_fmts)
+{
+    int nb = 0;
+    int i, j;
+    if (!vr || !out_fmts || max_fmts <= 0)
+        return 0;
+    for (i = 0; i < (int)vr->renderer_info.num_texture_formats && nb < max_fmts; i++) {
+        for (j = 0; j < FF_ARRAY_ELEMS(sdl_texture_format_map); j++) {
+            if (vr->renderer_info.texture_formats[i] == sdl_texture_format_map[j].texture_fmt) {
+                out_fmts[nb++] = sdl_texture_format_map[j].format;
+                break;
+            }
+        }
+    }
+    return nb;
+}
+
 int video_renderer_open(VideoRenderer *vr, int *width, int *height)
 {
     int w, h;
