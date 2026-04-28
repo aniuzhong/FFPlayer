@@ -737,7 +737,7 @@ int stream_component_open(VideoState *is, int stream_index)
 
         if ((ret = decoder_init(&is->auddec, avctx, is->audioq, demuxer_get_continue_read_thread(is->demuxer))) < 0)
             goto fail;
-        if (ic->iformat->flags & AVFMT_NOTIMESTAMPS) {
+        if (ic->iformat && (ic->iformat->flags & AVFMT_NOTIMESTAMPS)) {
             is->auddec.start_pts = is->audio_st->start_time;
             is->auddec.start_pts_tb = is->audio_st->time_base;
         }

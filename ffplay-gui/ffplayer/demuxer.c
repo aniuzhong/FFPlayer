@@ -266,6 +266,9 @@ void demuxer_io_reset_eof(Demuxer *demuxer)
 
 int demuxer_should_use_byte_seek(Demuxer* demuxer)
 {
+    if (!demuxer || !demuxer->ic || !demuxer->ic->iformat)
+        return 0;
+
     AVFormatContext *ic = demuxer->ic;
 
     // 1. Baseline: If the format explicitly flags byte seeking as unsupported
@@ -291,6 +294,9 @@ int demuxer_should_use_byte_seek(Demuxer* demuxer)
 
 double demuxer_get_max_gap(Demuxer* demuxer)
 {
+    if (!demuxer || !demuxer->ic || !demuxer->ic->iformat)
+        return 3600.0;
+
     AVFormatContext *ic = demuxer->ic;
     if (ic->iformat->flags & AVFMT_TS_DISCONT)
         return 10.0;   // Unstable timestamps: be strict
@@ -306,9 +312,10 @@ int demuxer_is_realtime(Demuxer *demuxer)
     if (!s)
         return -1;
 
-    if (!strcmp(s->iformat->name, "rtp")
+    if (s->iformat && s->iformat->name &&
+        (!strcmp(s->iformat->name, "rtp")
         || !strcmp(s->iformat->name, "rtsp")
-        || !strcmp(s->iformat->name, "sdp")) {
+        || !strcmp(s->iformat->name, "sdp"))) {
         return 1;
     }
 
@@ -360,11 +367,14 @@ int demuxer_get_stream_index(const Demuxer *d, enum AVMediaType type)
 
 int demuxer_is_realtime_network_protocol(Demuxer* d)
 {
+    if (!d || !d->ic)
+        return 0;
+
     AVFormatContext *ic = d->ic;
     const char *name = demuxer_get_input_name(d);
 
     // Check for RTSP (Real Time Streaming Protocol)
-    if (ic->iformat && !strcmp(ic->iformat->name, "rtsp")) {
+    if (ic->iformat && ic->iformat->name && !strcmp(ic->iformat->name, "rtsp")) {
         return 1;
     }
 
