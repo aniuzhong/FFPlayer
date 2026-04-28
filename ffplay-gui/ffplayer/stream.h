@@ -2,6 +2,7 @@
 #define FFPLAY_GUI_STREAM_H
 
 #include <stdint.h>
+#include <libavutil/buffer.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/rational.h>
 
@@ -35,6 +36,7 @@ VideoState *stream_open(const char *filename,
                         AudioDevice *audio_device,
                         const enum AVPixelFormat *supported_pix_fmts,
                         int nb_supported_pix_fmts,
+                        AVBufferRef *hw_device_ctx,
                         void (*frame_size_changed_cb)(void *opaque, int width, int height, AVRational sar),
                         void *frame_size_opaque);
 int stream_has_enough_packets(struct AVStream *st, int stream_id, PacketQueue *queue);
@@ -42,6 +44,20 @@ int stream_has_enough_packets(struct AVStream *st, int stream_id, PacketQueue *q
 int stream_component_open(VideoState *is, int stream_index);
 void stream_component_close(VideoState *is, int stream_index);
 void stream_close(VideoState *is);
+
+/**
+ * Hot-swap the live video AVCodecContext to a software-only one,
+ * keeping the stream_index/timebase/codec_id of the current video
+ * stream. Intended to be called from inside the video decode thread
+ * when hardware decoding is silently failing (no frames produced for
+ * a long time after get_format accepted AV_PIX_FMT_D3D11). The new
+ * context has hw_device_ctx == NULL and no get_format hook, so the
+ * legacy SW + filter-graph path takes over.
+ *
+ * Returns 0 on success, a negative AVERROR otherwise; on failure the
+ * old context is left untouched.
+ */
+int stream_video_reopen_software(VideoState *is);
 void stream_cycle_channel(VideoState *is, int codec_type);
 
 /**

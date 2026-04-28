@@ -11,9 +11,20 @@
 #include "clock.h"
 #include "demuxer.h"
 #include "filter.h"
+#include "stream.h"
 #include "video_state.h"
 #include "video_thread.h"
 #include "packet_queue.h"
+
+/* When hardware decoding silently produces zero frames (e.g. the
+ * D3D11VA decoder accepted our hwframes pool but the actual codec
+ * profile is unsupported on this GPU) we want to recover gracefully
+ * rather than show a black screen forever. We watch wall-clock time
+ * since the last successfully-queued frame and only act after the
+ * threshold expires AND there is real decoder work in flight (the
+ * packet queue is being filled). */
+#define HW_DECODE_STALL_THRESHOLD_US (3LL * 1000 * 1000)
+#define HW_DECODE_STALL_MIN_QUEUE     8
 
 static int queue_picture(VideoState *is, AVFrame *src_frame, double pts, double duration, int64_t pos, int serial)
 {
@@ -75,6 +86,17 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
     return got_picture;
 }
 
+/* Hardware-decoded frames keep their pixel data on the GPU and have no
+ * representation that the libavfilter graph could meaningfully consume
+ * (filtering would require av_hwframe_transfer_data, which defeats the
+ * whole zero-copy goal). For the HW path we therefore push the frame
+ * straight into the picture queue, computing pts/duration directly from
+ * the stream's time base and the demuxer-guessed frame rate. */
+static int hw_frame_has_data(const AVFrame *frame)
+{
+    return frame && frame->hw_frames_ctx && frame->data[0];
+}
+
 int video_thread(void *arg)
 {
     VideoState *is = (VideoState *)arg;
@@ -92,6 +114,11 @@ int video_thread(void *arg)
     enum AVPixelFormat last_format = (enum AVPixelFormat)-2;
     int last_serial = -1;
 
+    /* Watchdog state for HW->SW fallback. We only care about elapsed
+     * un-paused wall-clock time; while paused we freeze the timer. */
+    int64_t hw_last_progress_us = av_gettime_relative();
+    int     hw_fallback_attempted = 0;
+
     if (!frame)
         return AVERROR(ENOMEM);
 
@@ -99,8 +126,64 @@ int video_thread(void *arg)
         ret = get_video_frame(is, frame);
         if (ret < 0)
             goto the_end;
+
+        /* Reset the HW watchdog whenever we either produced a frame or
+         * we are paused (no work is expected). Otherwise, if we have
+         * been failing for a while AND there are clearly packets to
+         * decode, hot-swap the codec to a SW context and continue. */
+        if (ret > 0) {
+            hw_last_progress_us = av_gettime_relative();
+        } else if (!hw_fallback_attempted &&
+                   is->viddec.avctx &&
+                   is->viddec.avctx->hw_device_ctx &&
+                   !stream_is_paused(is)) {
+            int64_t now_us  = av_gettime_relative();
+            int     q_count = packet_queue_get_nb_packets(is->videoq);
+            if (q_count > HW_DECODE_STALL_MIN_QUEUE &&
+                now_us - hw_last_progress_us > HW_DECODE_STALL_THRESHOLD_US) {
+                av_log(NULL, AV_LOG_ERROR,
+                       "Hardware video decode produced no frames for >%lldms "
+                       "with %d packets queued; falling back to software.\n",
+                       (long long)(HW_DECODE_STALL_THRESHOLD_US / 1000), q_count);
+                hw_fallback_attempted = 1;
+                if (stream_video_reopen_software(is) < 0) {
+                    av_log(NULL, AV_LOG_ERROR,
+                           "Software fallback failed; aborting playback.\n");
+                    goto the_end;
+                }
+                /* Reset filter-graph state because the new SW context
+                 * will produce frames in a different pixel format than
+                 * the (silently broken) HW path was attempting to. */
+                avfilter_graph_free(&graph);
+                filt_in = filt_out = NULL;
+                last_w = last_h = 0;
+                last_format = (enum AVPixelFormat)-2;
+                last_serial = -1;
+                hw_last_progress_us = av_gettime_relative();
+            }
+        }
+
         if (!ret)
             continue;
+
+        /* ---- HW (zero-copy) path: bypass libavfilter entirely. -- */
+        if (hw_frame_has_data(frame)) {
+            FrameData *fd = frame->opaque_ref ? (FrameData *)frame->opaque_ref->data : NULL;
+            AVRational hw_tb = is->video_st->time_base;
+            AVRational hw_fr = demuxer_guess_frame_rate(is->demuxer,
+                demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO), frame);
+
+            duration = (hw_fr.num && hw_fr.den ? av_q2d((AVRational){hw_fr.den, hw_fr.num}) : 0);
+            pts      = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(hw_tb);
+
+            /* SAR may be unset on hwframes; the get_video_frame() helper
+             * already applied demuxer_guess_sample_aspect_ratio. */
+            ret = queue_picture(is, frame, pts, duration, fd ? fd->pkt_pos : -1, is->viddec.pkt_serial);
+            av_frame_unref(frame);
+            if (ret < 0)
+                goto the_end;
+            continue;
+        }
 
         if (last_w != frame->width
             || last_h != frame->height

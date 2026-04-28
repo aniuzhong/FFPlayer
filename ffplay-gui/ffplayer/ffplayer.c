@@ -13,6 +13,10 @@ struct FFPlayer {
     void *frame_size_opaque;
     enum AVPixelFormat supported_pix_fmts[FFPLAYER_MAX_PIX_FMTS];
     int nb_supported_pix_fmts;
+    /* Optional borrowed reference to a hardware device context. The
+     * player keeps its own ref-count via av_buffer_ref(); it is
+     * forwarded to stream_open() and ultimately to the video decoder. */
+    AVBufferRef *hw_device_ctx;
 };
 
 static void ffplayer_on_frame_size_changed(void *opaque, int width, int height, AVRational sar)
@@ -44,6 +48,7 @@ void ffplayer_free(FFPlayer **pp)
         return;
     p = *pp;
     ffplayer_close(p);
+    av_buffer_unref(&p->hw_device_ctx);
     av_freep(pp);
 }
 
@@ -57,6 +62,7 @@ int ffplayer_open(FFPlayer *p, const char *url)
         ffplayer_close(p);
     p->is = stream_open(url, p->audio_device,
                          p->supported_pix_fmts, p->nb_supported_pix_fmts,
+                         p->hw_device_ctx,
                          ffplayer_on_frame_size_changed, p);
     return p->is ? 0 : -1;
 }
@@ -340,6 +346,15 @@ void ffplayer_set_supported_pixel_formats(FFPlayer *p,
         return;
     p->nb_supported_pix_fmts = nb_pix_fmts < FFPLAYER_MAX_PIX_FMTS ? nb_pix_fmts : FFPLAYER_MAX_PIX_FMTS;
     memcpy(p->supported_pix_fmts, pix_fmts, p->nb_supported_pix_fmts * sizeof(p->supported_pix_fmts[0]));
+}
+
+void ffplayer_set_hw_device_ctx(FFPlayer *p, AVBufferRef *hw_device_ctx)
+{
+    if (!p)
+        return;
+    av_buffer_unref(&p->hw_device_ctx);
+    if (hw_device_ctx)
+        p->hw_device_ctx = av_buffer_ref(hw_device_ctx);
 }
 
 void ffplayer_set_frame_size_callback(FFPlayer *p, ffplayer_frame_size_cb cb, void *opaque)
