@@ -4,10 +4,6 @@
  *
  * Public interface for media lifecycle, playback control, seeking, audio,
  * track selection, rendering integration, and frame access.
- *
- * @defgroup ffplayer_api FFPlayer API
- * @brief Public API for FFPlayer.
- * @{
  */
 
 #ifndef FFPLAY_GUI_FFPLAYER_H
@@ -66,13 +62,6 @@ enum FFPlayerShowMode {
 #define FFPLAYER_CURSOR_HIDE_DELAY 1000000
 
 /**
- * @defgroup ffplayer_lifecycle Lifecycle
- * @brief Creation and destruction of FFPlayer instances.
- * @ingroup ffplayer_api
- * @{
- */
-
-/**
  * @brief Create and initialize an FFPlayer instance.
  *
  * @param[in] audio_device Associated audio device.
@@ -88,15 +77,6 @@ FFPlayer *ffplayer_create(AudioDevice *audio_device);
  * @note If @p p is non-NULL, then *@p p is set to NULL on return.
  */
 void ffplayer_free(FFPlayer **p);
-
-/** @} */
-
-/**
- * @defgroup ffplayer_media Open and close media
- * @brief Media loading and unloading operations.
- * @ingroup ffplayer_api
- * @{
- */
 
 /**
  * @brief Open media from the specified URL.
@@ -122,15 +102,6 @@ void ffplayer_close(FFPlayer *p);
  */
 int ffplayer_is_open(const FFPlayer *p);
 
-/** @} */
-
-/**
- * @defgroup ffplayer_playback Playback control
- * @brief Playback state control operations.
- * @ingroup ffplayer_api
- * @{
- */
-
 /**
  * @brief Toggle pause state.
  *
@@ -152,15 +123,6 @@ int ffplayer_is_paused(const FFPlayer *p);
  * @param[in] p FFPlayer instance.
  */
 void ffplayer_step_frame(FFPlayer *p);
-
-/** @} */
-
-/**
- * @defgroup ffplayer_seek Seeking
- * @brief Seeking operations.
- * @ingroup ffplayer_api
- * @{
- */
 
 /**
  * @brief Seek relative to the current position.
@@ -185,15 +147,6 @@ void ffplayer_seek_to_ratio(FFPlayer *p, float ratio);
  * @param[in] incr Chapter offset.
  */
 void ffplayer_seek_chapter(FFPlayer *p, int incr);
-
-/** @} */
-
-/**
- * @defgroup ffplayer_audio Audio
- * @brief Audio volume and mute control.
- * @ingroup ffplayer_api
- * @{
- */
 
 /**
  * @brief Set the volume level.
@@ -227,15 +180,6 @@ void ffplayer_adjust_volume_step(FFPlayer *p, int sign, double step);
  */
 void ffplayer_toggle_mute(FFPlayer *p);
 
-/** @} */
-
-/**
- * @defgroup ffplayer_tracks Track selection
- * @brief Audio/video/subtitle track selection operations.
- * @ingroup ffplayer_api
- * @{
- */
-
 /**
  * @brief Cycle to the next audio track.
  *
@@ -264,30 +208,12 @@ void ffplayer_cycle_subtitle_track(FFPlayer *p);
  */
 void ffplayer_cycle_all_tracks(FFPlayer *p);
 
-/** @} */
-
-/**
- * @defgroup ffplayer_display Display mode
- * @brief Audio display mode control.
- * @ingroup ffplayer_api
- * @{
- */
-
 /**
  * @brief Toggle audio display mode.
  *
  * @param[in] p FFPlayer instance.
  */
 void ffplayer_toggle_audio_display(FFPlayer *p);
-
-/** @} */
-
-/**
- * @defgroup ffplayer_info Media information
- * @brief Read-only media state queries.
- * @ingroup ffplayer_api
- * @{
- */
 
 /**
  * @brief Get the current playback position in seconds.
@@ -353,15 +279,6 @@ int ffplayer_can_seek(const FFPlayer *p);
  */
 float ffplayer_get_byte_progress(const FFPlayer *p);
 
-/** @} */
-
-/**
- * @defgroup ffplayer_render Render loop integration
- * @brief Render-loop refresh integration.
- * @ingroup ffplayer_api
- * @{
- */
-
 /**
  * @brief Check whether a refresh is needed.
  *
@@ -378,15 +295,6 @@ int ffplayer_needs_refresh(const FFPlayer *p);
  */
 void ffplayer_refresh(FFPlayer *p, double *remaining_time);
 
-/** @} */
-
-/**
- * @defgroup ffplayer_frame_access Frame access
- * @brief Pull-based access to video frames, subtitles, and related display data.
- * @ingroup ffplayer_api
- * @{
- */
-
 /**
  * @brief Get the current video frame selected by the sync algorithm.
  *
@@ -395,7 +303,7 @@ void ffplayer_refresh(FFPlayer *p, double *remaining_time);
  *
  * @warning The returned frame must not be freed by the caller.
  * @note The returned frame remains valid until the next call to
- *       ffplayer_refresh().
+ * ffplayer_refresh().
  */
 AVFrame *ffplayer_get_video_frame(const FFPlayer *p);
 
@@ -407,7 +315,7 @@ AVFrame *ffplayer_get_video_frame(const FFPlayer *p);
  *
  * @warning The returned subtitle must not be freed by the caller.
  * @note The returned subtitle remains valid until the next call to
- *       ffplayer_refresh().
+ * ffplayer_refresh().
  */
 AVSubtitle *ffplayer_get_subtitle(const FFPlayer *p);
 
@@ -439,15 +347,6 @@ enum FFPlayerShowMode ffplayer_get_show_mode(const FFPlayer *p);
  * @note The caller provides its own renderer.
  */
 AudioVisualizer *ffplayer_get_audio_visualizer(const FFPlayer *p);
-
-/** @} */
-
-/**
- * @defgroup ffplayer_window Window events
- * @brief Window events forwarded by the application.
- * @ingroup ffplayer_api
- * @{
- */
 
 /**
  * @brief Set the window size.
@@ -514,7 +413,7 @@ void ffplayer_set_supported_pixel_formats(FFPlayer *p,
  *
  * @param[in] p FFPlayer instance.
  * @param[in] hw_device_ctx Borrowed AVBufferRef to an AVHWDeviceContext,
- *                          or NULL to disable hardware acceleration.
+ * or NULL to disable hardware acceleration.
  */
 void ffplayer_set_hw_device_ctx(FFPlayer *p, AVBufferRef *hw_device_ctx);
 
@@ -539,12 +438,8 @@ typedef void (*ffplayer_frame_size_cb)(void *opaque, int width, int height, AVRa
  */
 void ffplayer_set_frame_size_callback(FFPlayer *p, ffplayer_frame_size_cb cb, void *opaque);
 
-/** @} */
-
 #ifdef __cplusplus
 }
 #endif
-
-/** @} */
 
 #endif
