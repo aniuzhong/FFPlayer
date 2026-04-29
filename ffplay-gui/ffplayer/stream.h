@@ -68,6 +68,8 @@ int         stream_is_paused(const VideoState *is);
 int         stream_get_volume(const VideoState *is);
 int         stream_needs_refresh(const VideoState *is);
 int         stream_is_video_open(const VideoState *is);
+int         stream_is_video_decoder_hardware(const VideoState *is);
+int         stream_has_video_hw_fallback(const VideoState *is);
 
 /**
  * High-level queries

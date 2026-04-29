@@ -338,6 +338,20 @@ int ffplayer_is_video_open(const FFPlayer *p)
     return stream_is_video_open(p->is);
 }
 
+int ffplayer_is_video_decoder_hardware(const FFPlayer *p)
+{
+    if (!p || !p->is)
+        return 0;
+    return stream_is_video_decoder_hardware(p->is);
+}
+
+int ffplayer_has_video_hw_fallback(const FFPlayer *p)
+{
+    if (!p || !p->is)
+        return 0;
+    return stream_has_video_hw_fallback(p->is);
+}
+
 void ffplayer_set_supported_pixel_formats(FFPlayer *p,
                                           const enum AVPixelFormat *pix_fmts,
                                           int nb_pix_fmts)

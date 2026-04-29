@@ -266,7 +266,7 @@ if(MSVC)
 endif()
 
 target_link_libraries(${_ffplay_gui_target} PRIVATE
-  ${_ffplayer_lib_target} spdlog::spdlog
+  ${_ffplayer_lib_target}
   d3d11 dxgi dxguid d3dcompiler shell32 comdlg32)
 
 if(WIN32)

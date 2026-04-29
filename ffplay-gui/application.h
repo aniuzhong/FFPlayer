@@ -27,9 +27,13 @@ private:
     void ShutdownImGui();
     void RefreshWindowTitle();
     void SeekToRatio(float ratio);
+    void StopPlaybackAndReset();
+    void UpdateRenderFps();
+    void UpdatePipelineStatsFromFrame(const AVFrame *frame);
     void RenderImGui();
-    void RenderLogPanel(float bar_height);
+    bool OpenMediaAndPlay(const char *source, const char *error_message);
     bool OpenFileDialogAndPlay();
+    bool OpenUrlAndPlay();
     [[noreturn]] void DoExit();
     void ToggleFullScreen();
     bool InitWindow();
@@ -57,11 +61,15 @@ private:
     int64_t last_drag_seek_us_ = 0;
     float stable_progress_ratio_ = 0.0f;
     bool stable_progress_ready_ = false;
-    bool show_log_panel_ = false;
-    float log_panel_width_ = 420.0f;
-    bool log_auto_scroll_ = true;
-    bool log_wrap_lines_ = true;
-    int log_level_filter_ = 0;
+    char open_url_input_[1024] = {};
+    bool show_statistics_window_ = false;
+    float render_fps_ = 0.0f;
+    float render_frame_time_ms_ = 0.0f;
+    int render_fps_frame_count_ = 0;
+    int64_t render_fps_last_sample_us_ = 0;
+    bool stats_has_video_frame_ = false;
+    bool stats_pipeline_zero_copy_ = false;
+    AVPixelFormat stats_video_pix_fmt_ = AV_PIX_FMT_NONE;
     bool quit_requested_ = false;
 };
 

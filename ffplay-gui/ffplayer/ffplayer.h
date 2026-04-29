@@ -380,6 +380,8 @@ void ffplayer_request_refresh(FFPlayer *p);
  * @return Non-zero if video is open, otherwise 0.
  */
 int ffplayer_is_video_open(const FFPlayer *p);
+int ffplayer_is_video_decoder_hardware(const FFPlayer *p);
+int ffplayer_has_video_hw_fallback(const FFPlayer *p);
 
 /**
  * @brief Set the list of pixel formats supported by the renderer.

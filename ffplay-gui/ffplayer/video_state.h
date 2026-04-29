@@ -77,6 +77,8 @@ typedef struct VideoState {
     /* Owning ref. NULL when hardware acceleration is disabled or
      * unavailable; non-NULL frames will then take the SW filter path. */
     AVBufferRef *hw_device_ctx;
+    int video_decoder_uses_hw;
+    int hw_fallback_triggered;
     void (*on_frame_size_changed)(void *opaque, int width, int height, AVRational sar);
     void *frame_size_opaque;
     void (*on_step_frame)(struct VideoState *is);

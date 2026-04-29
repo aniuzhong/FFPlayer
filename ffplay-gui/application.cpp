@@ -2,15 +2,13 @@
 #include <limits.h>
 #include <signal.h>
 #include <stdio.h>
-#include <deque>
-#include <mutex>
-#include <memory>
+#include <string.h>
 #include <vector>
 
 extern "C" {
 #include <libavutil/common.h>
-#include <libavutil/log.h>
 #include <libavutil/mathematics.h>
+#include <libavutil/pixdesc.h>
 #include <libavutil/time.h>
 #include <libavformat/avformat.h>
 #include <libavdevice/avdevice.h>
@@ -19,9 +17,6 @@ extern "C" {
 #include "imgui.h"
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx11.h"
-#include "spdlog/logger.h"
-#include "spdlog/sinks/base_sink.h"
-#include "spdlog/spdlog.h"
 
 #include <windows.h>
 #include <commdlg.h>
@@ -42,95 +37,6 @@ const int program_birth_year = 2003;
 static constexpr int kInitialDefaultWidth = 640;
 static constexpr int kInitialDefaultHeight = 480;
 static constexpr float kSeekIntervalSeconds = 10.0f;
-static constexpr size_t kMaxLogLines = 2000;
-
-/* ------------------------------------------------------------------ */
-/* Logging (identical to SDL2 application)                             */
-/* ------------------------------------------------------------------ */
-namespace {
-struct UiLogLine {
-    spdlog::level::level_enum level;
-    std::string text;
-};
-
-class ImGuiLogSink : public spdlog::sinks::base_sink<std::mutex> {
-public:
-    std::vector<UiLogLine> Snapshot()
-    {
-        std::lock_guard<std::mutex> lock(base_sink<std::mutex>::mutex_);
-        return std::vector<UiLogLine>(lines_.begin(), lines_.end());
-    }
-
-    void Clear()
-    {
-        std::lock_guard<std::mutex> lock(base_sink<std::mutex>::mutex_);
-        lines_.clear();
-    }
-
-private:
-    void sink_it_(const spdlog::details::log_msg &msg) override
-    {
-        spdlog::memory_buf_t buffer;
-        base_sink<std::mutex>::formatter_->format(msg, buffer);
-        lines_.push_back({msg.level, std::string(buffer.data(), buffer.size())});
-        if (lines_.size() > kMaxLogLines)
-            lines_.pop_front();
-    }
-
-    void flush_() override {}
-
-    std::deque<UiLogLine> lines_;
-};
-
-static std::shared_ptr<ImGuiLogSink> g_log_sink;
-static std::shared_ptr<spdlog::logger> g_ui_logger;
-
-static void InitUiLogger()
-{
-    if (g_ui_logger)
-        return;
-    g_log_sink = std::make_shared<ImGuiLogSink>();
-    g_ui_logger = std::make_shared<spdlog::logger>("ffplay_gui_ui", g_log_sink);
-    g_ui_logger->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
-    g_ui_logger->set_level(spdlog::level::trace);
-    spdlog::register_logger(g_ui_logger);
-}
-
-static void ShutdownUiLogger()
-{
-    if (!g_ui_logger)
-        return;
-    av_log_set_callback(av_log_default_callback);
-    spdlog::drop("ffplay_gui_ui");
-    g_ui_logger.reset();
-    g_log_sink.reset();
-}
-
-static spdlog::level::level_enum AvLevelToSpdLevel(int level)
-{
-    if (level <= AV_LOG_PANIC)   return spdlog::level::critical;
-    if (level <= AV_LOG_ERROR)   return spdlog::level::err;
-    if (level <= AV_LOG_WARNING) return spdlog::level::warn;
-    if (level <= AV_LOG_INFO)    return spdlog::level::info;
-    if (level <= AV_LOG_VERBOSE) return spdlog::level::debug;
-    return spdlog::level::trace;
-}
-
-static void UiAvLogCallback(void *avcl, int level, const char *fmt, va_list vl)
-{
-    if (!g_ui_logger)
-        return;
-    char line[2048];
-    int print_prefix = 1;
-    av_log_format_line2(avcl, level, fmt, vl, line, sizeof(line), &print_prefix);
-    std::string text(line);
-    while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
-        text.pop_back();
-    if (text.empty())
-        return;
-    g_ui_logger->log(AvLevelToSpdLevel(level), "{}", text);
-}
-}  // namespace
 
 static void sigterm_handler(int sig)
 {
@@ -206,10 +112,6 @@ LRESULT CALLBACK Application::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 
 int Application::Execute()
 {
-    InitUiLogger();
-    av_log_set_callback(UiAvLogCallback);
-    av_log_set_flags(AV_LOG_SKIP_REPEATED);
-
     avdevice_register_all();
     avformat_network_init();
 
@@ -218,12 +120,12 @@ int Application::Execute()
 
     /* Init SDL for audio + timer only (no video) */
     if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
-        av_log(nullptr, AV_LOG_FATAL, "Could not initialize SDL audio - %s\n", SDL_GetError());
+        fprintf(stderr, "Could not initialize SDL audio - %s\n", SDL_GetError());
         exit(1);
     }
 
     if (!InitWindow()) {
-        av_log(nullptr, AV_LOG_FATAL, "Failed to create Win32 window\n");
+        fprintf(stderr, "Failed to create Win32 window\n");
         exit(1);
     }
     InitRenderer();
@@ -279,10 +181,9 @@ void Application::InitRenderer()
     video_renderer_ctx_.default_width = kInitialDefaultWidth;
     video_renderer_ctx_.default_height = kInitialDefaultHeight;
     if (video_renderer_init(&video_renderer_ctx_, hwnd_) < 0) {
-        av_log(nullptr, AV_LOG_FATAL, "Failed to initialize renderer\n");
+        fprintf(stderr, "Failed to initialize renderer\n");
         DoExit();
     }
-    av_log(nullptr, AV_LOG_VERBOSE, "Initialized renderer.\n");
 }
 
 void Application::InitImGui()
@@ -292,6 +193,7 @@ void Application::InitImGui()
     ImGui::StyleColorsDark();
     ImGuiIO &io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.Fonts->AddFontDefault();
     ImGui_ImplWin32_Init(hwnd_);
     ImGui_ImplDX11_Init(video_renderer_ctx_.device, video_renderer_ctx_.context);
     imgui_ready_ = true;
@@ -454,8 +356,14 @@ void Application::DisplayVideo()
     if (mode == FFPLAYER_SHOW_MODE_VIDEO) {
         AVFrame *frame = ffplayer_get_video_frame(player_);
         AVSubtitle *subtitle = ffplayer_get_subtitle(player_);
-        if (frame)
+        if (frame) {
+            UpdatePipelineStatsFromFrame(frame);
             video_renderer_draw_video(&video_renderer_ctx_, frame, subtitle, 0, 0, win_w, win_h);
+        } else {
+            stats_has_video_frame_ = false;
+        }
+    } else {
+        stats_has_video_frame_ = false;
     }
     /* Audio visualization is not supported in D3D11 backend (video mode only) */
 }
@@ -502,6 +410,69 @@ void Application::SeekToRatio(float ratio)
     ffplayer_seek_to_ratio(player_, ratio);
 }
 
+void Application::StopPlaybackAndReset()
+{
+    video_renderer_cleanup_textures(&video_renderer_ctx_);
+    ffplayer_free(&player_);
+    player_ = ffplayer_create(&audio_device_);
+    if (!player_) {
+        MessageBoxA(hwnd_, "Failed to recreate player.", "Stop failed", MB_ICONERROR);
+        DoExit();
+    }
+
+    enum AVPixelFormat pix_fmts[32];
+    int nb = video_renderer_get_supported_pixel_formats(&video_renderer_ctx_, pix_fmts, 32);
+    ffplayer_set_supported_pixel_formats(player_, pix_fmts, nb);
+    if (AVBufferRef *hw = video_renderer_get_hw_device_ctx(&video_renderer_ctx_))
+        ffplayer_set_hw_device_ctx(player_, hw);
+    ffplayer_set_frame_size_callback(player_, Application::OnFrameSizeChanged, this);
+
+    video_open_done_ = 0;
+    pending_seek_ratio_ = -1.0f;
+    last_drag_seek_us_ = 0;
+    stable_progress_ratio_ = 0.0f;
+    stable_progress_ready_ = false;
+    stats_has_video_frame_ = false;
+    stats_pipeline_zero_copy_ = false;
+    stats_video_pix_fmt_ = AV_PIX_FMT_NONE;
+    RefreshWindowTitle();
+}
+
+void Application::UpdateRenderFps()
+{
+    const int64_t now_us = av_gettime_relative();
+    if (render_fps_last_sample_us_ <= 0) {
+        render_fps_last_sample_us_ = now_us;
+        render_fps_frame_count_ = 0;
+        render_fps_ = 0.0f;
+        render_frame_time_ms_ = 0.0f;
+        return;
+    }
+
+    ++render_fps_frame_count_;
+    const int64_t elapsed_us = now_us - render_fps_last_sample_us_;
+    if (elapsed_us >= 500000) {
+        render_fps_ = (float)render_fps_frame_count_ * 1000000.0f / (float)elapsed_us;
+        render_frame_time_ms_ = render_fps_ > 0.0f ? (1000.0f / render_fps_) : 0.0f;
+        render_fps_frame_count_ = 0;
+        render_fps_last_sample_us_ = now_us;
+    }
+}
+
+void Application::UpdatePipelineStatsFromFrame(const AVFrame *frame)
+{
+    if (!frame) {
+        stats_has_video_frame_ = false;
+        stats_pipeline_zero_copy_ = false;
+        stats_video_pix_fmt_ = AV_PIX_FMT_NONE;
+        return;
+    }
+    stats_has_video_frame_ = true;
+    stats_video_pix_fmt_ = (AVPixelFormat)frame->format;
+    const char *pix_fmt_name = av_get_pix_fmt_name(stats_video_pix_fmt_);
+    stats_pipeline_zero_copy_ = pix_fmt_name && strcmp(pix_fmt_name, "d3d11") == 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* ImGui rendering (same UI as SDL2 backend)                           */
 /* ------------------------------------------------------------------ */
@@ -535,10 +506,42 @@ void Application::RenderImGui()
     bool can_approx_seek = false;
     bool can_seek = false;
     bool using_stable_progress = false;
+    bool stop_requested = false;
 
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
+    UpdateRenderFps();
+
+    if (ImGui::BeginMainMenuBar()) {
+        if (ImGui::BeginMenu("Tools")) {
+            ImGui::MenuItem("Statistics", nullptr, &show_statistics_window_);
+            ImGui::EndMenu();
+        }
+        ImGui::EndMainMenuBar();
+    }
+
+    if (show_statistics_window_) {
+        const bool decoder_hw = ffplayer_is_video_decoder_hardware(player_) != 0;
+        const bool hw_fallback = ffplayer_has_video_hw_fallback(player_) != 0;
+        const char *pipeline_mode = "No Frame";
+        if (stats_has_video_frame_)
+            pipeline_mode = stats_pipeline_zero_copy_ ? "Zero-Copy (D3D11)" : "Software Upload";
+        const char *pix_fmt_name = stats_has_video_frame_ ? av_get_pix_fmt_name(stats_video_pix_fmt_) : nullptr;
+        if (!pix_fmt_name)
+            pix_fmt_name = "N/A";
+
+        ImGui::SetNextWindowSize(ImVec2(360.0f, 190.0f), ImGuiCond_FirstUseEver);
+        if (ImGui::Begin("Statistics", &show_statistics_window_)) {
+            ImGui::Text("Render FPS: %.2f", render_fps_);
+            ImGui::Text("Frame Time: %.2f ms", render_frame_time_ms_);
+            ImGui::Text("Pipeline Mode: %s", pipeline_mode);
+            ImGui::Text("Video PixFmt: %s", pix_fmt_name);
+            ImGui::Text("Decoder Mode: %s", decoder_hw ? "HW" : "SW");
+            ImGui::Text("HW Fallback: %s", hw_fallback ? "Triggered" : "No");
+        }
+        ImGui::End();
+    }
 
     if (ffplayer_is_open(player_)) {
         duration_sec = ffplayer_get_duration(player_);
@@ -567,7 +570,7 @@ void Application::RenderImGui()
             time_text = "Unknown duration";
         }
 
-        play_text = ffplayer_is_paused(player_) ? "Play" : "Pause";
+        play_text = ffplayer_is_paused(player_) ? "Play " : "Pause";
     }
     if (!ffplayer_is_open(player_))
         stable_progress_ready_ = false;
@@ -605,23 +608,30 @@ void Application::RenderImGui()
         if (ImGui::Button("Open file..."))
             OpenFileDialogAndPlay();
         ImGui::SameLine();
-        if (ImGui::Button(show_log_panel_ ? "Hide Log" : "Log"))
-            show_log_panel_ = !show_log_panel_;
+        bool open_url_clicked = ImGui::Button("Open URL");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(FFMAX(220.0f, ImGui::GetContentRegionAvail().x));
+        bool url_entered = ImGui::InputTextWithHint(
+            "##open_url",
+            "https://... / rtsp://... / file path",
+            open_url_input_,
+            IM_ARRAYSIZE(open_url_input_),
+            ImGuiInputTextFlags_EnterReturnsTrue);
+        if (open_url_clicked || url_entered)
+            OpenUrlAndPlay();
     } else {
         float avail_w = ImGui::GetContentRegionAvail().x;
         float play_w = ImGui::CalcTextSize(play_text.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        float stop_w = ImGui::CalcTextSize("Stop").x + ImGui::GetStyle().FramePadding.x * 2.0f;
         float time_w = ImGui::CalcTextSize(time_text.c_str()).x;
         float volume_w = FFMIN(110.0f, FFMAX(72.0f, avail_w * 0.22f));
-        float log_button_w = ImGui::CalcTextSize(show_log_panel_ ? "Hide Log" : "Log").x +
-            ImGui::GetStyle().FramePadding.x * 2.0f;
         float min_timeline_w = 80.0f;
         bool hide_time_text = false;
-        float needed_w = play_w + margin + time_w + margin + min_timeline_w + margin + volume_w +
-            margin + log_button_w;
+        float needed_w = play_w + margin + stop_w + margin + time_w + margin + min_timeline_w + margin + volume_w;
 
         if (avail_w < needed_w) {
             hide_time_text = true;
-            needed_w = play_w + margin + min_timeline_w + margin + volume_w + margin + log_button_w;
+            needed_w = play_w + margin + stop_w + margin + min_timeline_w + margin + volume_w;
         }
         if (avail_w < needed_w) {
             volume_w = FFMAX(58.0f, avail_w * 0.18f);
@@ -629,119 +639,59 @@ void Application::RenderImGui()
 
         float timeline_w = FFMAX(
             min_timeline_w,
-            avail_w - play_w - margin - (hide_time_text ? 0.0f : (time_w + margin)) - margin - volume_w -
-                margin - log_button_w);
+            avail_w - play_w - margin - stop_w - margin - (hide_time_text ? 0.0f : (time_w + margin)) - margin - volume_w);
 
         if (ImGui::Button(play_text.c_str()))
             ffplayer_toggle_pause(player_);
-        if (!hide_time_text) {
+        ImGui::SameLine(0.0f, margin);
+        if (ImGui::Button("Stop"))
+            stop_requested = true;
+        if (!stop_requested && !hide_time_text) {
             ImGui::SameLine(0.0f, margin);
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(time_text.c_str());
         }
-        ImGui::SameLine(0.0f, margin);
-        ImGui::SetNextItemWidth(timeline_w);
-        float slider_value = pending_seek_ratio_ >= 0.0f ? pending_seek_ratio_ : progress;
-        if (!can_seek)
-            ImGui::BeginDisabled();
-        if (ImGui::SliderFloat("##timeline", &slider_value, 0.0f, 1.0f, "")) {
-            pending_seek_ratio_ = slider_value;
-            if (ImGui::IsItemActive()) {
-                int64_t now_us = av_gettime_relative();
-                if (last_drag_seek_us_ == 0 || now_us - last_drag_seek_us_ >= 40000) {
-                    SeekToRatio(pending_seek_ratio_);
-                    last_drag_seek_us_ = now_us;
+        if (!stop_requested) {
+            ImGui::SameLine(0.0f, margin);
+            ImGui::SetNextItemWidth(timeline_w);
+            float slider_value = pending_seek_ratio_ >= 0.0f ? pending_seek_ratio_ : progress;
+            if (!can_seek)
+                ImGui::BeginDisabled();
+            if (ImGui::SliderFloat("##timeline", &slider_value, 0.0f, 1.0f, "")) {
+                pending_seek_ratio_ = slider_value;
+                if (ImGui::IsItemActive()) {
+                    int64_t now_us = av_gettime_relative();
+                    if (last_drag_seek_us_ == 0 || now_us - last_drag_seek_us_ >= 40000) {
+                        SeekToRatio(pending_seek_ratio_);
+                        last_drag_seek_us_ = now_us;
+                    }
                 }
             }
+            if (pending_seek_ratio_ >= 0.0f && ImGui::IsItemDeactivatedAfterEdit()) {
+                SeekToRatio(pending_seek_ratio_);
+                stable_progress_ratio_ = pending_seek_ratio_;
+                stable_progress_ready_ = true;
+                pending_seek_ratio_ = -1.0f;
+                last_drag_seek_us_ = 0;
+            }
+            if (!can_seek)
+                ImGui::EndDisabled();
+            ImGui::SameLine(0.0f, margin);
+            ImGui::SetNextItemWidth(volume_w);
+            const char *volume_fmt = volume_w >= 72.0f ? "%.0f%%" : "";
+            if (ImGui::SliderFloat("##volume", &volume_percent, 0.0f, 100.0f, volume_fmt)) {
+                ffplayer_set_volume(player_, (int)((volume_percent / 100.0f) * SDL_MIX_MAXVOLUME));
+            }
         }
-        if (pending_seek_ratio_ >= 0.0f && ImGui::IsItemDeactivatedAfterEdit()) {
-            SeekToRatio(pending_seek_ratio_);
-            stable_progress_ratio_ = pending_seek_ratio_;
-            stable_progress_ready_ = true;
-            pending_seek_ratio_ = -1.0f;
-            last_drag_seek_us_ = 0;
-        }
-        if (!can_seek)
-            ImGui::EndDisabled();
-        ImGui::SameLine(0.0f, margin);
-        ImGui::SetNextItemWidth(volume_w);
-        const char *volume_fmt = volume_w >= 72.0f ? "%.0f%%" : "";
-        if (ImGui::SliderFloat("##volume", &volume_percent, 0.0f, 100.0f, volume_fmt)) {
-            ffplayer_set_volume(player_, (int)((volume_percent / 100.0f) * SDL_MIX_MAXVOLUME));
-        }
-        ImGui::SameLine(0.0f, margin);
-        if (ImGui::Button(show_log_panel_ ? "Hide Log" : "Log"))
-            show_log_panel_ = !show_log_panel_;
     }
 
     ImGui::End();
     ImGui::PopStyleColor();
     ImGui::PopStyleVar(2);
-    RenderLogPanel(bar_height);
     ImGui::Render();
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-}
-
-void Application::RenderLogPanel(float bar_height)
-{
-    if (!show_log_panel_ || !g_log_sink)
-        return;
-
-    ImGuiIO &io = ImGui::GetIO();
-    float panel_height = FFMAX(120.0f, io.DisplaySize.y - bar_height);
-    float min_width = 280.0f;
-    float max_width = FFMAX(min_width, io.DisplaySize.x * 0.85f);
-    log_panel_width_ = av_clipf(log_panel_width_, min_width, max_width);
-
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - log_panel_width_, 0.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(log_panel_width_, panel_height), ImGuiCond_Always);
-    ImGui::SetNextWindowSizeConstraints(ImVec2(min_width, 120.0f), ImVec2(max_width, io.DisplaySize.y));
-    if (!ImGui::Begin("Logs", &show_log_panel_, ImGuiWindowFlags_NoCollapse)) {
-        ImGui::End();
-        return;
-    }
-
-    log_panel_width_ = ImGui::GetWindowWidth();
-    const char *level_names[] = {"All", "Info+", "Warn+", "Error+"};
-    ImGui::SetNextItemWidth(110.0f);
-    ImGui::Combo("Level", &log_level_filter_, level_names, IM_ARRAYSIZE(level_names));
-    ImGui::SameLine();
-    ImGui::Checkbox("Auto-scroll", &log_auto_scroll_);
-    ImGui::SameLine();
-    ImGui::Checkbox("Wrap", &log_wrap_lines_);
-    ImGui::SameLine();
-    if (ImGui::Button("Clear"))
-        g_log_sink->Clear();
-
-    ImGui::Separator();
-    ImGuiWindowFlags child_flags = ImGuiWindowFlags_HorizontalScrollbar;
-    ImGui::BeginChild("LogScrollRegion", ImVec2(0.0f, 0.0f), false, child_flags);
-
-    std::vector<UiLogLine> lines = g_log_sink->Snapshot();
-    if (log_wrap_lines_)
-        ImGui::PushTextWrapPos();
-    for (const UiLogLine &line : lines) {
-        if (log_level_filter_ == 1 && line.level < spdlog::level::info) continue;
-        if (log_level_filter_ == 2 && line.level < spdlog::level::warn) continue;
-        if (log_level_filter_ == 3 && line.level < spdlog::level::err)  continue;
-
-        if (line.level >= spdlog::level::err)
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.45f, 0.45f, 1.0f));
-        else if (line.level == spdlog::level::warn)
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.85f, 0.35f, 1.0f));
-
-        ImGui::TextUnformatted(line.text.c_str());
-
-        if (line.level >= spdlog::level::warn)
-            ImGui::PopStyleColor();
-    }
-    if (log_wrap_lines_)
-        ImGui::PopTextWrapPos();
-    if (log_auto_scroll_ && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 10.0f)
-        ImGui::SetScrollHereY(1.0f);
-
-    ImGui::EndChild();
-    ImGui::End();
+    if (stop_requested)
+        StopPlaybackAndReset();
 }
 
 /* ------------------------------------------------------------------ */
@@ -784,24 +734,45 @@ bool Application::OpenFileDialogAndPlay()
         return false;
     }
 
+    bool ok = OpenMediaAndPlay(utf8_path.data(), "Failed to open selected media file.");
+    open_dialog_active_ = false;
+    return ok;
+}
+
+bool Application::OpenUrlAndPlay()
+{
+    std::string url(open_url_input_);
+    size_t begin = url.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos)
+        return false;
+    size_t end = url.find_last_not_of(" \t\r\n");
+    url = url.substr(begin, end - begin + 1);
+    if (!OpenMediaAndPlay(url.c_str(), "Failed to open media URL."))
+        return false;
+    open_url_input_[0] = '\0';
+    return true;
+}
+
+bool Application::OpenMediaAndPlay(const char *source, const char *error_message)
+{
+    if (!source || !source[0])
+        return false;
+
     ffplayer_close(player_);
     video_renderer_cleanup_textures(&video_renderer_ctx_);
     video_open_done_ = 0;
     stable_progress_ready_ = false;
 
-    if (ffplayer_open(player_, utf8_path.data()) < 0) {
-        MessageBoxA(hwnd_, "Failed to open selected media file.", "Open failed", MB_ICONERROR);
+    if (ffplayer_open(player_, source) < 0) {
+        MessageBoxA(hwnd_, error_message, "Open failed", MB_ICONERROR);
         RefreshWindowTitle();
-        open_dialog_active_ = false;
         return false;
     }
     ffplayer_toggle_pause(player_);
     ffplayer_request_refresh(player_);
     stable_progress_ratio_ = 0.0f;
     stable_progress_ready_ = false;
-
     RefreshWindowTitle();
-    open_dialog_active_ = false;
     return true;
 }
 
@@ -820,9 +791,7 @@ bool Application::OpenFileDialogAndPlay()
         hwnd_ = nullptr;
     }
     avformat_network_deinit();
-    ShutdownUiLogger();
     SDL_Quit();
-    av_log(nullptr, AV_LOG_QUIET, "%s", "");
     exit(0);
 }
 

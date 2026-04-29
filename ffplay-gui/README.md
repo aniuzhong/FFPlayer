@@ -62,7 +62,6 @@
 - 进度条偶发跳回最左端
 - 异步准备（PrepareAsync）
     - 显式两阶段：例如 prepare（或 open 只做 demux + 探测，start 才真正开解码线程），或 open + start 组合，便于「先缓冲再开播」。
-- 增加网络流
 - 倍速
 - 音频
     - 指定设备名

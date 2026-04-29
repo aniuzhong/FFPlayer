@@ -316,6 +316,16 @@ int stream_is_video_open(const VideoState *is)
     return is && is->width > 0;
 }
 
+int stream_is_video_decoder_hardware(const VideoState *is)
+{
+    return is ? is->video_decoder_uses_hw : 0;
+}
+
+int stream_has_video_hw_fallback(const VideoState *is)
+{
+    return is ? is->hw_fallback_triggered : 0;
+}
+
 /* -- High-level queries ------------------------ */
 
 void stream_seek_to_ratio(VideoState *is, float ratio)
@@ -555,6 +565,8 @@ VideoState *stream_open(const char *filename,
     is->last_video_stream = is->video_stream = -1;
     is->last_audio_stream = is->audio_stream = -1;
     is->last_subtitle_stream = is->subtitle_stream = -1;
+    is->video_decoder_uses_hw = 0;
+    is->hw_fallback_triggered = 0;
 
     is->demuxer = demuxer_create(filename);
     if (!is->demuxer)
@@ -748,6 +760,8 @@ int stream_component_open(VideoState *is, int stream_index)
     case AVMEDIA_TYPE_VIDEO:
         is->video_stream = stream_index;
         is->video_st = ic->streams[stream_index];
+        is->video_decoder_uses_hw = avctx->hw_device_ctx ? 1 : 0;
+        is->hw_fallback_triggered = 0;
 
         if ((ret = decoder_init(&is->viddec, avctx, is->videoq, demuxer_get_continue_read_thread(is->demuxer))) < 0)
             goto fail;
@@ -799,6 +813,8 @@ void stream_component_close(VideoState *is, int stream_index)
     case AVMEDIA_TYPE_VIDEO:
         decoder_abort(&is->viddec, is->pictq);
         decoder_destroy(&is->viddec);
+        is->video_decoder_uses_hw = 0;
+        is->hw_fallback_triggered = 0;
         break;
     case AVMEDIA_TYPE_SUBTITLE:
         decoder_abort(&is->subdec, is->subpq);
@@ -878,6 +894,8 @@ int stream_video_reopen_software(VideoState *is)
     is->viddec.finished  = 0;
     is->viddec.packet_pending = 0;
     av_packet_unref(is->viddec.pkt);
+    is->video_decoder_uses_hw = 0;
+    is->hw_fallback_triggered = 1;
 
     av_log(NULL, AV_LOG_WARNING,
            "Video decoder hot-swapped to software path (codec=%s).\n",
