@@ -22,7 +22,6 @@ extern "C" {
 #endif
 
 typedef struct PacketQueue PacketQueue;
-typedef struct FrameQueue FrameQueue;
 
 typedef struct Frame {
     AVFrame     *frame;

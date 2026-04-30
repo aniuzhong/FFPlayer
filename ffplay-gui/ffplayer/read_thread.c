@@ -136,7 +136,6 @@ int read_thread(void *arg)
         goto fail;
     }
 
-    demuxer_set_eof(is->demuxer, 0);
     demuxer_open_input(is->demuxer, NULL);
     demuxer_find_stream_info(is->demuxer, NULL);
     demuxer_io_reset_eof(is->demuxer);

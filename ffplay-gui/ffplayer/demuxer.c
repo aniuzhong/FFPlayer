@@ -32,11 +32,11 @@ static int decode_interrupt_cb(void *ctx)
     return demuxer_is_aborted(demuxer);
 }
 
-static void print_error(const char *filename, int err)
+static void print_error(const char *d, int err)
 {
     char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
     av_strerror(err, errbuf, sizeof(errbuf));
-    av_log(NULL, AV_LOG_ERROR, "%s: %s\n", filename, errbuf);
+    av_log(NULL, AV_LOG_ERROR, "%s: %s\n", d, errbuf);
 }
 
 Demuxer *demuxer_create(const char *input_url)
@@ -44,59 +44,59 @@ Demuxer *demuxer_create(const char *input_url)
     if (!input_url)
         return NULL;
 
-    Demuxer *demuxer = av_mallocz(sizeof(Demuxer));
-    if (!demuxer)
+    Demuxer *d = av_mallocz(sizeof(Demuxer));
+    if (!d)
         return NULL;
 
-    demuxer->seek_mode          = -1;   // auto-detect
-    demuxer->eof                = 0;
-    demuxer->max_frame_duration = 0.0;
+    d->seek_mode          = -1;   // auto-detect
+    d->eof                = 0;
+    d->max_frame_duration = 0.0;
 
-    memset(demuxer->st_index, -1, sizeof(demuxer->st_index));
+    memset(d->st_index, -1, sizeof(d->st_index));
 
-    demuxer->input_url = av_strdup(input_url);
-    if (!demuxer->input_url)
+    d->input_url = av_strdup(input_url);
+    if (!d->input_url)
         goto fail;
 
-    demuxer->wait_mutex = SDL_CreateMutex();
-    if (!demuxer->wait_mutex)
+    d->wait_mutex = SDL_CreateMutex();
+    if (!d->wait_mutex)
         goto fail;
 
-    demuxer->continue_read_thread = SDL_CreateCond();
-    if (!demuxer->continue_read_thread)
+    d->continue_read_thread = SDL_CreateCond();
+    if (!d->continue_read_thread)
         goto fail;
 
-    demuxer->ic = avformat_alloc_context();
-    if (!demuxer->ic) {
+    d->ic = avformat_alloc_context();
+    if (!d->ic) {
         av_log(NULL, AV_LOG_FATAL, "Could not allocate context.\n");
         goto fail;
     }
-    demuxer->ic->interrupt_callback.callback = decode_interrupt_cb;
-    demuxer->ic->interrupt_callback.opaque = demuxer;
+    d->ic->interrupt_callback.callback = decode_interrupt_cb;
+    d->ic->interrupt_callback.opaque = d;
 
-    return demuxer;
+    return d;
 
 fail:
-    if (demuxer) {
-        if (demuxer->ic) {
-            avformat_free_context(demuxer->ic);
+    if (d) {
+        if (d->ic) {
+            avformat_free_context(d->ic);
         }
-        av_freep(&demuxer->input_url);
-        if (demuxer->wait_mutex)
-            SDL_DestroyMutex(demuxer->wait_mutex);
-        if (demuxer->continue_read_thread)
-            SDL_DestroyCond(demuxer->continue_read_thread);
-        av_free(demuxer);
+        av_freep(&d->input_url);
+        if (d->wait_mutex)
+            SDL_DestroyMutex(d->wait_mutex);
+        if (d->continue_read_thread)
+            SDL_DestroyCond(d->continue_read_thread);
+        av_free(d);
     }
     return NULL;
 }
 
-void demuxer_free(Demuxer **demuxer)
+void demuxer_free(Demuxer **pp)
 {
-    if (!demuxer || !*demuxer)
+    if (!pp || !*pp)
         return;
 
-    Demuxer *d = *demuxer;
+    Demuxer *d = *pp;
     avformat_close_input(&d->ic);
     av_freep(&d->input_url);
     if (d->wait_mutex) {
@@ -108,168 +108,168 @@ void demuxer_free(Demuxer **demuxer)
         d->continue_read_thread = NULL;
     }
     av_free(d);
-    *demuxer = NULL;
+    *pp = NULL;
 }
 
-const char *demuxer_get_input_name(const Demuxer *demuxer)
+const char *demuxer_get_input_name(const Demuxer *d)
 {
-    if (!demuxer || !demuxer->input_url)
+    if (!d || !d->input_url)
         return "";
-    return demuxer->input_url;
+    return d->input_url;
 }
 
-AVFormatContext *demuxer_get_format_context(const Demuxer *demuxer)
+AVFormatContext *demuxer_get_format_context(const Demuxer *d)
 {
-    /* TODO Consider a better wrapper instead of direct access to demuxer->ic */
-    if (!demuxer)
+    /* TODO Consider a better wrapper instead of direct access to d->ic */
+    if (!d)
         return NULL;
-    return demuxer->ic;
+    return d->ic;
 }
 
-int demuxer_is_eof(const Demuxer *demuxer)
+int demuxer_is_eof(const Demuxer *d)
 {
-    if (!demuxer)
+    if (!d)
         return 0;
-    return demuxer->eof;
+    return d->eof;
 }
 
-void demuxer_set_eof(Demuxer *demuxer, int eof)
+void demuxer_set_eof(Demuxer *d, int eof)
 {
-    if (!demuxer)
+    if (!d)
         return;
-    demuxer->eof = eof;
+    d->eof = eof;
 }
 
-void demuxer_notify_continue_read(Demuxer *demuxer)
+void demuxer_notify_continue_read(Demuxer *d)
 {
-    if (demuxer && demuxer->continue_read_thread) {
-        SDL_CondSignal(demuxer->continue_read_thread);
+    if (d && d->continue_read_thread) {
+        SDL_CondSignal(d->continue_read_thread);
     }
 }
 
-void demuxer_request_abort(Demuxer *demuxer)
+void demuxer_request_abort(Demuxer *d)
 {
-    if (!demuxer)
+    if (!d)
         return;
-    demuxer->abort_request = 1;
+    d->abort_request = 1;
 }
 
-int demuxer_is_aborted(const Demuxer *demuxer)
+int demuxer_is_aborted(const Demuxer *d)
 {
-    if (!demuxer)
+    if (!d)
         return 0;
-    return demuxer->abort_request;
+    return d->abort_request;
 }
 
-int demuxer_get_seek_mode(const Demuxer *demuxer)
+int demuxer_get_seek_mode(const Demuxer *d)
 {
-    if (!demuxer || demuxer->seek_mode < 0)
+    if (!d || d->seek_mode < 0)
         return 0;
-    return demuxer->seek_mode;
+    return d->seek_mode;
 }
 
-void demuxer_set_seek_mode(Demuxer *demuxer, int seek_mode)
+void demuxer_set_seek_mode(Demuxer *d, int seek_mode)
 {
-    if (!demuxer)
+    if (!d)
         return;
-    demuxer->seek_mode = seek_mode;
+    d->seek_mode = seek_mode;
 }
 
-double demuxer_get_max_frame_duration(const Demuxer *demuxer)
+double demuxer_get_max_frame_duration(const Demuxer *d)
 {
-    if (!demuxer)
+    if (!d)
         return 0.0;
-    return demuxer->max_frame_duration;
+    return d->max_frame_duration;
 }
 
-void demuxer_set_max_frame_duration(Demuxer *demuxer, double max_frame_duration)
+void demuxer_set_max_frame_duration(Demuxer *d, double max_frame_duration)
 {
-    if (!demuxer)
+    if (!d)
         return;
-    demuxer->max_frame_duration = max_frame_duration;
+    d->max_frame_duration = max_frame_duration;
 }
 
-double *demuxer_get_max_frame_duration_ptr(Demuxer *demuxer)
+double *demuxer_get_max_frame_duration_ptr(Demuxer *d)
 {
-    if (!demuxer)
+    if (!d)
         return NULL;
-    return &demuxer->max_frame_duration;
+    return &d->max_frame_duration;
 }
 
-SDL_cond *demuxer_get_continue_read_thread(const Demuxer *demuxer)
+SDL_cond *demuxer_get_continue_read_thread(const Demuxer *d)
 {
-    if (!demuxer)
+    if (!d)
         return NULL;
-    return demuxer->continue_read_thread;
+    return d->continue_read_thread;
 }
 
-int demuxer_get_queue_attachments_req(const Demuxer *demuxer)
+int demuxer_get_queue_attachments_req(const Demuxer *d)
 {
-    if (!demuxer)
+    if (!d)
         return 0;
-    return demuxer->queue_attachments_req;
+    return d->queue_attachments_req;
 }
 
-void demuxer_set_queue_attachments_req(Demuxer *demuxer, int req)
+void demuxer_set_queue_attachments_req(Demuxer *d, int req)
 {
-    if (!demuxer)
+    if (!d)
         return;
-    demuxer->queue_attachments_req = req;
+    d->queue_attachments_req = req;
 }
 
-int demuxer_get_read_pause_return(const Demuxer *demuxer)
+int demuxer_get_read_pause_return(const Demuxer *d)
 {
-    if (!demuxer)
+    if (!d)
         return 0;
-    return demuxer->read_pause_return;
+    return d->read_pause_return;
 }
 
-void demuxer_set_read_pause_return(Demuxer *demuxer, int ret)
+void demuxer_set_read_pause_return(Demuxer *d, int ret)
 {
-    if (!demuxer)
+    if (!d)
         return;
-    demuxer->read_pause_return = ret;
+    d->read_pause_return = ret;
 }
 
-int demuxer_open_input(Demuxer *demuxer, AVDictionary **options)
+int demuxer_open_input(Demuxer *d, AVDictionary **options)
 {
     AVDictionary *open_opts = NULL;
     if (!av_dict_get(open_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
         av_dict_set(&open_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
-    int err = avformat_open_input(&demuxer->ic, demuxer_get_input_name(demuxer), NULL, &open_opts);
+    int err = avformat_open_input(&d->ic, demuxer_get_input_name(d), NULL, &open_opts);
     av_dict_free(&open_opts);
     open_opts = NULL;
     if (err < 0) {
-        print_error(demuxer_get_input_name(demuxer), err);
+        print_error(demuxer_get_input_name(d), err);
         return -1;
     }
     return 0;
 }
 
-int demuxer_find_stream_info(Demuxer *demuxer, AVDictionary **options)
+int demuxer_find_stream_info(Demuxer *d, AVDictionary **options)
 {
-    int err = avformat_find_stream_info(demuxer->ic, NULL);
+    int err = avformat_find_stream_info(d->ic, NULL);
     if (err < 0) {
         av_log(NULL, AV_LOG_WARNING,
-               "%s: could not find codec parameters\n", demuxer_get_input_name(demuxer));
+               "%s: could not find codec parameters\n", demuxer_get_input_name(d));
         return -1;
     }
     return 0;
 }
 
-void demuxer_io_reset_eof(Demuxer *demuxer)
+void demuxer_io_reset_eof(Demuxer *d)
 {
     // FIXME hack, ffplay maybe should not use avio_feof() to test for the end
-    if (demuxer->ic->pb)
-        demuxer->ic->pb->eof_reached = 0;
+    if (d->ic->pb)
+        d->ic->pb->eof_reached = 0;
 }
 
-int demuxer_should_use_byte_seek(Demuxer* demuxer)
+int demuxer_should_use_byte_seek(Demuxer* d)
 {
-    if (!demuxer || !demuxer->ic || !demuxer->ic->iformat)
+    if (!d || !d->ic || !d->ic->iformat)
         return 0;
 
-    AVFormatContext *ic = demuxer->ic;
+    AVFormatContext *ic = d->ic;
 
     // 1. Baseline: If the format explicitly flags byte seeking as unsupported
     //    return false.
@@ -292,67 +292,67 @@ int demuxer_should_use_byte_seek(Demuxer* demuxer)
     return has_discontinuity && !is_ogg;
 }
 
-double demuxer_get_max_gap(Demuxer* demuxer)
+double demuxer_get_max_gap(Demuxer* d)
 {
-    if (!demuxer || !demuxer->ic || !demuxer->ic->iformat)
+    if (!d || !d->ic || !d->ic->iformat)
         return 3600.0;
 
-    AVFormatContext *ic = demuxer->ic;
+    AVFormatContext *ic = d->ic;
     if (ic->iformat->flags & AVFMT_TS_DISCONT)
         return 10.0;   // Unstable timestamps: be strict
     return 3600.0;     // Stable timestamps: be lenient
 }
 
-int demuxer_is_realtime(Demuxer *demuxer)
+int demuxer_is_realtime(Demuxer *d)
 {
-    if (!demuxer)
+    if (!d)
         return -1;
 
-    AVFormatContext *s = demuxer->ic;
-    if (!s)
+    AVFormatContext *ic = d->ic;
+    if (!ic)
         return -1;
 
-    if (s->iformat && s->iformat->name &&
-        (!strcmp(s->iformat->name, "rtp")
-        || !strcmp(s->iformat->name, "rtsp")
-        || !strcmp(s->iformat->name, "sdp"))) {
+    if (ic->iformat && ic->iformat->name &&
+        (!strcmp(ic->iformat->name, "rtp")
+        || !strcmp(ic->iformat->name, "rtsp")
+        || !strcmp(ic->iformat->name, "sdp"))) {
         return 1;
     }
 
-    if (s->pb && (!strncmp(s->url, "rtp:", 4)
-        || !strncmp(s->url, "udp:", 4))) {
+    if (ic->pb && (!strncmp(ic->url, "rtp:", 4)
+        || !strncmp(ic->url, "udp:", 4))) {
         return 1;
     }
     return 0;
 }
 
-int demuxer_find_stream_components(Demuxer *demuxer)
+int demuxer_find_stream_components(Demuxer *d)
 {
-    if (!demuxer->ic) {
+    if (!d->ic) {
         av_log(NULL, AV_LOG_ERROR, "AVFormatContext not initialized\n");
         return -1;
     }
 
-    for (int i = 0; i < demuxer->ic->nb_streams; i++) {
-        AVStream *st = demuxer->ic->streams[i];
+    for (int i = 0; i < d->ic->nb_streams; i++) {
+        AVStream *st = d->ic->streams[i];
         st->discard = AVDISCARD_ALL;
         st->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
     }
 
-    demuxer->st_index[AVMEDIA_TYPE_VIDEO] =
-        av_find_best_stream(demuxer->ic, AVMEDIA_TYPE_VIDEO,
-                            demuxer->st_index[AVMEDIA_TYPE_VIDEO], -1, NULL, 0);
-    demuxer->st_index[AVMEDIA_TYPE_AUDIO] =
-        av_find_best_stream(demuxer->ic, AVMEDIA_TYPE_AUDIO,
-                            demuxer->st_index[AVMEDIA_TYPE_AUDIO],
-                            demuxer->st_index[AVMEDIA_TYPE_VIDEO],
+    d->st_index[AVMEDIA_TYPE_VIDEO] =
+        av_find_best_stream(d->ic, AVMEDIA_TYPE_VIDEO,
+                            d->st_index[AVMEDIA_TYPE_VIDEO], -1, NULL, 0);
+    d->st_index[AVMEDIA_TYPE_AUDIO] =
+        av_find_best_stream(d->ic, AVMEDIA_TYPE_AUDIO,
+                            d->st_index[AVMEDIA_TYPE_AUDIO],
+                            d->st_index[AVMEDIA_TYPE_VIDEO],
                             NULL, 0);
-    demuxer->st_index[AVMEDIA_TYPE_SUBTITLE] =
-        av_find_best_stream(demuxer->ic, AVMEDIA_TYPE_SUBTITLE,
-                            demuxer->st_index[AVMEDIA_TYPE_SUBTITLE],
-                            (demuxer->st_index[AVMEDIA_TYPE_AUDIO] >= 0 ?
-                             demuxer->st_index[AVMEDIA_TYPE_AUDIO] :
-                             demuxer->st_index[AVMEDIA_TYPE_VIDEO]),
+    d->st_index[AVMEDIA_TYPE_SUBTITLE] =
+        av_find_best_stream(d->ic, AVMEDIA_TYPE_SUBTITLE,
+                            d->st_index[AVMEDIA_TYPE_SUBTITLE],
+                            (d->st_index[AVMEDIA_TYPE_AUDIO] >= 0 ?
+                             d->st_index[AVMEDIA_TYPE_AUDIO] :
+                             d->st_index[AVMEDIA_TYPE_VIDEO]),
                             NULL, 0);
     return 0;
 }
@@ -394,18 +394,17 @@ int demuxer_read_packet(Demuxer *d, AVPacket *pkt)
 
 int demuxer_is_io_error(Demuxer *d)
 {
-    AVFormatContext *ic = d->ic;
-    return ic && ic->pb && ic->pb->error;
+    if (!d)
+        return 0;
+    return d->ic && d->ic->pb && d->ic->pb->error;
 }
 
 int demuxer_should_handle_eof(Demuxer *d, int ret)
 {
-    AVFormatContext *ic = d->ic;
-    if (!ic)
+    if (!d || !d->ic)
         return 0;
-    if (ret == AVERROR_EOF || (ic->pb && avio_feof(ic->pb))) {
+    if (ret == AVERROR_EOF || (d->ic->pb && avio_feof(d->ic->pb)))
         return !demuxer_is_eof(d);
-    }
     return 0;
 }
 
@@ -483,12 +482,12 @@ AVRational demuxer_guess_frame_rate(const Demuxer *d, int stream_index, AVFrame 
     return av_guess_frame_rate(ic, st, frame);
 }
 
-int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg)
+int demuxer_start(Demuxer *d, int (*read_thread_fn)(void *), void *arg)
 {
-    if (!demuxer || !read_thread_fn)
+    if (!d || !read_thread_fn)
         return AVERROR(EINVAL);
-    demuxer->read_tid = SDL_CreateThread(read_thread_fn, "read_thread", arg);
-    if (!demuxer->read_tid)
+    d->read_tid = SDL_CreateThread(read_thread_fn, "read_thread", arg);
+    if (!d->read_tid)
         return AVERROR(ENOMEM);
     return 0;
 }
@@ -532,13 +531,13 @@ float demuxer_get_byte_progress(const Demuxer *d)
     return -1.0f;
 }
 
-void demuxer_stop(Demuxer *demuxer)
+void demuxer_stop(Demuxer *d)
 {
-    if (!demuxer)
+    if (!d)
         return;
-    if (demuxer->read_tid) {
-        SDL_WaitThread(demuxer->read_tid, NULL);
-        demuxer->read_tid = NULL;
+    if (d->read_tid) {
+        SDL_WaitThread(d->read_tid, NULL);
+        d->read_tid = NULL;
     }
 }
 
