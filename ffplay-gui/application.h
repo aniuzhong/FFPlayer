@@ -72,6 +72,8 @@ private:
     bool stats_pipeline_zero_copy_ = false;
     AVPixelFormat stats_video_pix_fmt_ = AV_PIX_FMT_NONE;
     bool quit_requested_ = false;
+    /** ffplay infinite_buffer: -1 auto, 0 throttle, 1 unbounded (-infbuf). Persisted across Stop / new player. */
+    int startup_infinite_buffer_ = -1;
 };
 
 #endif

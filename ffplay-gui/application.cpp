@@ -145,6 +145,7 @@ int Application::Execute()
     if (AVBufferRef *hw = video_renderer_get_hw_device_ctx(&video_renderer_ctx_))
         ffplayer_set_hw_device_ctx(player_, hw);
     ffplayer_set_frame_size_callback(player_, Application::OnFrameSizeChanged, this);
+    ffplayer_set_infinite_buffer(player_, startup_infinite_buffer_);
     InitImGui();
 
     MainLoop();
@@ -447,6 +448,7 @@ void Application::StopPlaybackAndReset()
     if (AVBufferRef *hw = video_renderer_get_hw_device_ctx(&video_renderer_ctx_))
         ffplayer_set_hw_device_ctx(player_, hw);
     ffplayer_set_frame_size_callback(player_, Application::OnFrameSizeChanged, this);
+    ffplayer_set_infinite_buffer(player_, startup_infinite_buffer_);
 
     video_open_done_ = 0;
     pending_seek_ratio_ = -1.0f;
@@ -534,12 +536,53 @@ void Application::RenderImGui()
     ImGui::NewFrame();
     UpdateRenderFps();
 
+    float main_menu_bar_bottom = 0.0f;
+
     if (ImGui::BeginMainMenuBar()) {
+        main_menu_bar_bottom = ImGui::GetWindowPos().y + ImGui::GetWindowHeight();
         if (ImGui::BeginMenu("Tools")) {
             ImGui::MenuItem("Statistics", nullptr, &show_statistics_window_);
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
+    }
+
+    if (!ffplayer_is_open(player_)) {
+        float top_bar_h = 48.0f;
+        ImGui::SetNextWindowPos(ImVec2(0.0f, main_menu_bar_bottom));
+        ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, top_bar_h));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.03f, 0.04f, 0.08f, 0.85f));
+        ImGui::Begin("StartupDefaults", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("-infbuf");
+        ImGui::SameLine();
+        ImGui::TextUnformatted("=");
+        ImGui::SameLine();
+        int inf_idx;
+        if (startup_infinite_buffer_ < 0)
+            inf_idx = 0;
+        else if (startup_infinite_buffer_ == 0)
+            inf_idx = 1;
+        else
+            inf_idx = 2;
+        const char *inf_labels[] = { "auto (-1)", "off: throttle queues (0)", "on: unbounded read (1)" };
+        const ImGuiStyle &st = ImGui::GetStyle();
+        float inf_combo_w = 0.0f;
+        for (int i = 0; i < IM_ARRAYSIZE(inf_labels); ++i)
+            inf_combo_w = FFMAX(inf_combo_w, ImGui::CalcTextSize(inf_labels[i], nullptr, true).x);
+        inf_combo_w += st.FramePadding.x * 2.0f + ImGui::GetFrameHeight();
+        inf_combo_w = FFMIN(inf_combo_w, ImGui::GetContentRegionAvail().x);
+        ImGui::SetNextItemWidth(inf_combo_w);
+        if (ImGui::Combo("##infbuf", &inf_idx, inf_labels, IM_ARRAYSIZE(inf_labels))) {
+            startup_infinite_buffer_ = (inf_idx == 0) ? -1 : (inf_idx == 1) ? 0 : 1;
+            ffplayer_set_infinite_buffer(player_, startup_infinite_buffer_);
+        }
+        ImGui::End();
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar(2);
     }
 
     if (show_statistics_window_) {
