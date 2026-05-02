@@ -103,6 +103,24 @@ void ffplayer_close(FFPlayer *p);
 int ffplayer_is_open(const FFPlayer *p);
 
 /**
+ * @brief Set read-thread packet queue throttling (ffplay @c -infbuf / @c infinite_buffer).
+ *
+ * @param infinite_buffer -1: auto — after opening, realtime inputs behave like @c -infbuf (no queue throttle);
+ *                        0: always throttle when packet queues are full enough;
+ *                        1: never throttle (read ahead as fast as possible).
+ *
+ * Stored on the FFPlayer for the next ffplayer_open(). If media is already open, updates the current session
+ * immediately (with the same realtime auto rule for @p -1).
+ */
+void ffplayer_set_infinite_buffer(FFPlayer *p, int infinite_buffer);
+
+/**
+ * @brief Current infinite-buffer mode: live @c VideoState value if open (after any realtime auto-adjustment),
+ *        otherwise the value set for the next open.
+ */
+int ffplayer_get_infinite_buffer(const FFPlayer *p);
+
+/**
  * @brief Toggle pause state.
  *
  * @param[in] p FFPlayer instance.

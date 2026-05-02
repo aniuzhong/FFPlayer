@@ -13,6 +13,11 @@ struct FFPlayer {
     void *frame_size_opaque;
     enum AVPixelFormat supported_pix_fmts[FFPLAYER_MAX_PIX_FMTS];
     int nb_supported_pix_fmts;
+    /**
+     * Read-ahead policy for next open (ffplay infinite_buffer / -infbuf).
+     * -1 auto, 0 throttle, 1 unbounded. Applied to VideoState in ffplayer_open.
+     */
+    int infinite_buffer;
     /* Optional borrowed reference to a hardware device context. The
      * player keeps its own ref-count via av_buffer_ref(); it is
      * forwarded to stream_open() and ultimately to the video decoder. */
@@ -38,6 +43,7 @@ FFPlayer *ffplayer_create(AudioDevice *audio_device)
         return NULL;
     p->audio_device = audio_device;
     p->is = NULL;
+    p->infinite_buffer = -1;
     return p;
 }
 
@@ -63,6 +69,7 @@ int ffplayer_open(FFPlayer *p, const char *url)
     p->is = stream_open(url, p->audio_device,
                          p->supported_pix_fmts, p->nb_supported_pix_fmts,
                          p->hw_device_ctx,
+                         p->infinite_buffer,
                          ffplayer_on_frame_size_changed, p);
     return p->is ? 0 : -1;
 }
@@ -78,6 +85,24 @@ void ffplayer_close(FFPlayer *p)
 int ffplayer_is_open(const FFPlayer *p)
 {
     return p && p->is != NULL;
+}
+
+void ffplayer_set_infinite_buffer(FFPlayer *p, int infinite_buffer)
+{
+    if (!p)
+        return;
+    p->infinite_buffer = infinite_buffer;
+    if (p->is)
+        stream_set_infinite_buffer(p->is, infinite_buffer);
+}
+
+int ffplayer_get_infinite_buffer(const FFPlayer *p)
+{
+    if (!p)
+        return -1;
+    if (p->is)
+        return stream_get_infinite_buffer(p->is);
+    return p->infinite_buffer;
 }
 
 /* -- Playback control --------------------------- */

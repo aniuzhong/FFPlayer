@@ -383,6 +383,20 @@ int stream_is_eof(const VideoState *is)
     return is->demuxer.eof;
 }
 
+int stream_get_infinite_buffer(const VideoState *is)
+{
+    return is ? is->infinite_buffer : -1;
+}
+
+void stream_set_infinite_buffer(VideoState *is, int infinite_buffer)
+{
+    if (!is)
+        return;
+    is->infinite_buffer = infinite_buffer;
+    if (is->infinite_buffer < 0 && demuxer_is_realtime(&is->demuxer))
+        is->infinite_buffer = 1;
+}
+
 int stream_has_quit_request(const VideoState *is)
 {
     if (!is)
@@ -550,6 +564,7 @@ VideoState *stream_open(const char *filename,
                         const enum AVPixelFormat *supported_pix_fmts,
                         int nb_supported_pix_fmts,
                         AVBufferRef *hw_device_ctx,
+                        int infinite_buffer,
                         void (*frame_size_changed_cb)(void *opaque, int width, int height, AVRational sar),
                         void *frame_size_opaque)
 {
@@ -567,6 +582,7 @@ VideoState *stream_open(const char *filename,
     is->last_subtitle_stream = is->subtitle_stream = -1;
     is->video_decoder_uses_hw = 0;
     is->hw_fallback_triggered = 0;
+    is->infinite_buffer = infinite_buffer;
 
     if (demuxer_init(&is->demuxer, filename) < 0)
         goto fail;

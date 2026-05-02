@@ -85,6 +85,14 @@ typedef struct VideoState {
 
     int last_video_stream, last_audio_stream, last_subtitle_stream;
 
+    /**
+     * Read-thread queue throttling (ffplay @c infinite_buffer / @c -infbuf).
+     * -1: undecided — after streams open, realtime inputs are set to 1;
+     * 0: always throttle when queues are full enough;
+     * 1: never throttle (read ahead unbounded).
+     */
+    int infinite_buffer;
+
     int quit_request;
 } VideoState;
 

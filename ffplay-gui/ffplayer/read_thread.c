@@ -171,6 +171,9 @@ int read_thread(void *arg)
         goto fail;
     }
 
+    if (is->infinite_buffer < 0 && demuxer_is_realtime(&is->demuxer))
+        is->infinite_buffer = 1;
+
     for (;;) {
         if (is->demuxer.abort_request)
             break;
@@ -189,8 +192,8 @@ int read_thread(void *arg)
             goto fail;
         }
 
-        /* throttle reading if queue is full or has enough packets */
-        if (!demuxer_is_realtime(&is->demuxer) &&
+        /* throttle reading if queue is full or has enough packets (ffplay infinite_buffer) */
+        if (is->infinite_buffer < 1 &&
               (packet_queue_get_size(is->audioq) +
                packet_queue_get_size(is->videoq) +
                packet_queue_get_size(is->subtitleq) > MAX_QUEUE_SIZE

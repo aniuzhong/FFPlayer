@@ -37,6 +37,7 @@ VideoState *stream_open(const char *filename,
                         const enum AVPixelFormat *supported_pix_fmts,
                         int nb_supported_pix_fmts,
                         AVBufferRef *hw_device_ctx,
+                        int infinite_buffer,
                         void (*frame_size_changed_cb)(void *opaque, int width, int height, AVRational sar),
                         void *frame_size_opaque);
 int stream_has_enough_packets(struct AVStream *st, int stream_id, PacketQueue *queue);
@@ -44,6 +45,9 @@ int stream_has_enough_packets(struct AVStream *st, int stream_id, PacketQueue *q
 int stream_component_open(VideoState *is, int stream_index);
 void stream_component_close(VideoState *is, int stream_index);
 void stream_close(VideoState *is);
+
+int          stream_get_infinite_buffer(const VideoState *is);
+void         stream_set_infinite_buffer(VideoState *is, int infinite_buffer);
 
 /**
  * Hot-swap the live video AVCodecContext to a software-only one,

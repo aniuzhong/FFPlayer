@@ -60,7 +60,7 @@ int    demuxer_should_use_byte_seek(const Demuxer *d);
 double demuxer_get_max_gap(const Demuxer *d);
 int    demuxer_is_realtime(const Demuxer *d);
 int    demuxer_find_stream_components(Demuxer *d);
-int    emuxer_is_realtime_network_protocol(const Demuxer *d);
+int    demuxer_is_realtime_network_protocol(const Demuxer *d);
 
 int  demuxer_read_packet(Demuxer *d, AVPacket *pkt);
 int  demuxer_is_io_error(const Demuxer *d);
