@@ -70,7 +70,7 @@ typedef struct VideoState {
     AVFilterContext *in_audio_filter;
     AVFilterContext *out_audio_filter;
     AVFilterGraph *agraph;
-    Demuxer *demuxer;
+    Demuxer demuxer;
     AudioDevice *audio_device;
     enum AVPixelFormat supported_pix_fmts[32];
     int nb_supported_pix_fmts;

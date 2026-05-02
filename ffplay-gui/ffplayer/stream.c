@@ -132,13 +132,13 @@ void stream_seek(VideoState *is, int64_t pos, int64_t rel, int by_bytes)
         if (by_bytes)
             is->seek_flags |= AVSEEK_FLAG_BYTE;
         is->seek_req = 1;
-        SDL_CondSignal(demuxer_get_continue_read_thread(is->demuxer));
+        SDL_CondSignal(is->demuxer.continue_read_thread);
     }
 }
 
 void stream_toggle_pause(VideoState *is)
 {
-    av_sync_toggle_pause(&is->av_sync, &is->paused, &is->frame_timer, demuxer_get_read_pause_return(is->demuxer));
+    av_sync_toggle_pause(&is->av_sync, &is->paused, &is->frame_timer, is->demuxer.read_pause_return);
 }
 
 void stream_toggle_pause_and_clear_step(VideoState *is)
@@ -189,7 +189,7 @@ void stream_refresh(VideoState *is, double *remaining_time)
     Frame *sp, *sp2;
 
     if (!is->paused && av_sync_is_external_clock_master(&is->av_sync) &&
-        demuxer_is_realtime(is->demuxer))
+        demuxer_is_realtime(&is->demuxer))
         check_external_clock_speed(&is->av_sync);
 
     if (is->show_mode != SHOW_MODE_VIDEO && is->audio_st && is->audio_visualizer) {
@@ -286,9 +286,9 @@ void stream_request_refresh(VideoState *is)
 
 /* -- Accessors ---------------------------------- */
 
-Demuxer *stream_get_demuxer(const VideoState *is)
+Demuxer *stream_get_demuxer(VideoState *is)
 {
-    return is ? is->demuxer : NULL;
+    return is ? &is->demuxer : NULL;
 }
 
 int stream_is_paused(const VideoState *is)
@@ -335,12 +335,12 @@ void stream_seek_to_ratio(VideoState *is, float ratio)
     if (!is)
         return;
 
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
+    AVFormatContext *ic = is->demuxer.ic;
     if (!ic)
         return;
 
     ratio = av_clipf(ratio, 0.0f, 1.0f);
-    if (demuxer_get_seek_mode(is->demuxer) || ic->duration <= 0) {
+    if ((is->demuxer.seek_mode > 0) || ic->duration <= 0) {
         if (!ic->pb)
             return;
         size = avio_size(ic->pb);
@@ -363,7 +363,7 @@ double stream_get_position(const VideoState *is)
     pos = get_master_clock(&is->av_sync);
     if (isnan(pos))
         return 0.0;
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
+    AVFormatContext *ic = is->demuxer.ic;
     if (ic && ic->start_time != AV_NOPTS_VALUE)
         pos -= ic->start_time / (double)AV_TIME_BASE;
     return pos > 0.0 ? pos : 0.0;
@@ -373,14 +373,14 @@ double stream_get_duration(const VideoState *is)
 {
     if (!is)
         return -1.0;
-    return demuxer_get_duration_seconds(is->demuxer);
+    return demuxer_get_duration_seconds(&is->demuxer);
 }
 
 int stream_is_eof(const VideoState *is)
 {
     if (!is)
         return 0;
-    return demuxer_is_eof(is->demuxer);
+    return is->demuxer.eof;
 }
 
 int stream_has_quit_request(const VideoState *is)
@@ -394,7 +394,7 @@ int stream_has_chapters(const VideoState *is)
 {
     if (!is)
         return 0;
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
+    AVFormatContext *ic = is->demuxer.ic;
     return ic && ic->nb_chapters > 1;
 }
 
@@ -402,21 +402,21 @@ const char *stream_get_media_title(const VideoState *is)
 {
     if (!is)
         return NULL;
-    return demuxer_get_input_name(is->demuxer);
+    return is->demuxer.input_url ? is->demuxer.input_url : "";
 }
 
 int stream_can_seek(const VideoState *is)
 {
     if (!is)
         return 0;
-    return demuxer_stream_is_seekable(is->demuxer);
+    return demuxer_stream_is_seekable(&is->demuxer);
 }
 
 float stream_get_byte_progress(const VideoState *is)
 {
     if (!is)
         return -1.0f;
-    return demuxer_get_byte_progress(is->demuxer);
+    return demuxer_get_byte_progress(&is->demuxer);
 }
 
 void stream_cycle_audio(VideoState *is)
@@ -480,7 +480,7 @@ void stream_seek_chapter(VideoState *is, int incr)
 
     if (!is)
         return;
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
+    AVFormatContext *ic = is->demuxer.ic;
     if (!ic || !ic->nb_chapters)
         return;
 
@@ -512,11 +512,11 @@ void stream_seek_relative(VideoState *is, double incr_seconds)
     if (!is)
         return;
 
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
+    AVFormatContext *ic = is->demuxer.ic;
     if (!ic)
         return;
 
-    if (demuxer_get_seek_mode(is->demuxer)) {
+    if (is->demuxer.seek_mode > 0) {
         pos = -1;
         if (pos < 0 && is->video_stream >= 0)
             pos = frame_queue_last_pos(is->pictq);
@@ -568,8 +568,7 @@ VideoState *stream_open(const char *filename,
     is->video_decoder_uses_hw = 0;
     is->hw_fallback_triggered = 0;
 
-    is->demuxer = demuxer_create(filename);
-    if (!is->demuxer)
+    if (demuxer_init(&is->demuxer, filename) < 0)
         goto fail;
 
     is->ytop = 0;
@@ -609,7 +608,7 @@ VideoState *stream_open(const char *filename,
     av_sync_bind(&is->av_sync, is->audclk, is->vidclk, is->extclk,
                  is->audioq, is->videoq, &is->audio_st,
                  &is->audio_stream, &is->video_stream,
-                 demuxer_get_max_frame_duration_ptr(is->demuxer));
+                 &is->demuxer.max_frame_duration);
 
     is->audio_pipeline = audio_pipeline_create();
     if (!is->audio_pipeline)
@@ -629,7 +628,7 @@ VideoState *stream_open(const char *filename,
 
     // TODO: stream_start (fire read thread)
 
-    if (demuxer_start(is->demuxer, read_thread, is) < 0) {
+    if (demuxer_start(&is->demuxer, read_thread, is) < 0) {
         av_log(NULL, AV_LOG_FATAL, "Failed to start demuxer thread\n");
         goto fail;
     }
@@ -660,7 +659,7 @@ int stream_component_open(VideoState *is, int stream_index)
     AVChannelLayout ch_layout = { 0 };
     int ret = 0;
     
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
+    AVFormatContext *ic = is->demuxer.ic;
     if (!ic || stream_index < 0 || stream_index >= ic->nb_streams)
         return -1;
 
@@ -708,7 +707,7 @@ int stream_component_open(VideoState *is, int stream_index)
     if ((ret = avcodec_open2(avctx, codec, &opts)) < 0) {
         goto fail;
     }
-    demuxer_set_eof(is->demuxer, 0);
+    is->demuxer.eof = 0;
     ic->streams[stream_index]->discard = AVDISCARD_DEFAULT;
     switch (avctx->codec_type) {
     case AVMEDIA_TYPE_AUDIO:
@@ -744,7 +743,7 @@ int stream_component_open(VideoState *is, int stream_index)
         is->audio_stream = stream_index;
         is->audio_st = ic->streams[stream_index];
 
-        if ((ret = decoder_init(&is->auddec, avctx, is->audioq, demuxer_get_continue_read_thread(is->demuxer))) < 0)
+        if ((ret = decoder_init(&is->auddec, avctx, is->audioq, is->demuxer.continue_read_thread)) < 0)
             goto fail;
         if (ic->iformat && (ic->iformat->flags & AVFMT_NOTIMESTAMPS)) {
             is->auddec.start_pts = is->audio_st->start_time;
@@ -760,17 +759,17 @@ int stream_component_open(VideoState *is, int stream_index)
         is->video_decoder_uses_hw = avctx->hw_device_ctx ? 1 : 0;
         is->hw_fallback_triggered = 0;
 
-        if ((ret = decoder_init(&is->viddec, avctx, is->videoq, demuxer_get_continue_read_thread(is->demuxer))) < 0)
+        if ((ret = decoder_init(&is->viddec, avctx, is->videoq, is->demuxer.continue_read_thread)) < 0)
             goto fail;
         if ((ret = decoder_start(&is->viddec, video_thread, "video_decoder", is)) < 0)
             goto out;
-        demuxer_set_queue_attachments_req(is->demuxer, 1);
+        is->demuxer.queue_attachments_req = 1;
         break;
     case AVMEDIA_TYPE_SUBTITLE:
         is->subtitle_stream = stream_index;
         is->subtitle_st = ic->streams[stream_index];
 
-        if ((ret = decoder_init(&is->subdec, avctx, is->subtitleq, demuxer_get_continue_read_thread(is->demuxer))) < 0)
+        if ((ret = decoder_init(&is->subdec, avctx, is->subtitleq, is->demuxer.continue_read_thread)) < 0)
             goto fail;
         if ((ret = decoder_start(&is->subdec, subtitle_thread, "subtitle_decoder", is)) < 0)
             goto out;
@@ -792,7 +791,7 @@ void stream_component_close(VideoState *is, int stream_index)
 {
     AVCodecParameters *codecpar;
 
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
+    AVFormatContext *ic = is->demuxer.ic;
     if (!ic || stream_index < 0 || stream_index >= ic->nb_streams)
         return;
     codecpar = ic->streams[stream_index]->codecpar;
@@ -845,7 +844,7 @@ int stream_video_reopen_software(VideoState *is)
     if (!is || is->video_stream < 0)
         return AVERROR(EINVAL);
 
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
+    AVFormatContext *ic = is->demuxer.ic;
     if (!ic || is->video_stream >= (int)ic->nb_streams)
         return AVERROR(EINVAL);
 
@@ -908,8 +907,8 @@ void stream_close(VideoState *is)
 {
     if (!is)
         return;
-    demuxer_request_abort(is->demuxer);
-    demuxer_stop(is->demuxer);
+    is->demuxer.abort_request = 1;
+    demuxer_stop(&is->demuxer);
     if (is->audio_stream >= 0)
         stream_component_close(is, is->audio_stream);
     if (is->video_stream >= 0)
@@ -917,7 +916,7 @@ void stream_close(VideoState *is)
     if (is->subtitle_stream >= 0)
         stream_component_close(is, is->subtitle_stream);
 
-    demuxer_free(&is->demuxer);
+    demuxer_destroy(&is->demuxer);
     if (packet_queue_is_initialized(is->videoq))
         packet_queue_free(&is->videoq);
     if (packet_queue_is_initialized(is->audioq))
@@ -947,7 +946,7 @@ void stream_cycle_channel(VideoState *is, int codec_type)
     AVProgram *p = NULL;
     int nb_streams;
 
-    AVFormatContext *ic = demuxer_get_format_context(is->demuxer);
+    AVFormatContext *ic = is->demuxer.ic;
     if (!ic)
         return;
     nb_streams = ic->nb_streams;

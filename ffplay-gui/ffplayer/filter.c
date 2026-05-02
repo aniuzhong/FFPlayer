@@ -85,7 +85,9 @@ int configure_video_filters(AVFilterGraph *graph,
     int ret;
     AVFilterContext *filt_src = NULL, *filt_out = NULL, *last_filter = NULL;
     AVCodecParameters *codecpar = video_st->codecpar;
-    AVRational fr = demuxer_guess_frame_rate(demuxer, demuxer_get_stream_index(demuxer, AVMEDIA_TYPE_VIDEO), NULL);
+    AVRational fr = demuxer_guess_frame_rate(demuxer,
+                                             demuxer_stream_index(demuxer, AVMEDIA_TYPE_VIDEO),
+                                             NULL);
     AVBufferSrcParameters *par = av_buffersrc_parameters_alloc();
 
     if (!par)

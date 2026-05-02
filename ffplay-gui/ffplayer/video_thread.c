@@ -66,9 +66,10 @@ static int get_video_frame(VideoState *is, AVFrame *frame)
         if (frame->pts != AV_NOPTS_VALUE)
             dpts = av_q2d(is->video_st->time_base) * frame->pts;
 
-        frame->sample_aspect_ratio = demuxer_guess_sample_aspect_ratio(is->demuxer, 
-                                                                       demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO),
-                                                                       frame);
+        frame->sample_aspect_ratio = demuxer_guess_sample_aspect_ratio(
+            &is->demuxer,
+            demuxer_stream_index(&is->demuxer, AVMEDIA_TYPE_VIDEO),
+            frame);
 
         if (frame->pts != AV_NOPTS_VALUE &&
             av_sync_should_early_drop(&is->av_sync,
@@ -105,7 +106,8 @@ int video_thread(void *arg)
     double duration;
     int ret;
     AVRational tb = is->video_st->time_base;
-    AVRational frame_rate = demuxer_guess_frame_rate(is->demuxer, demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO), NULL);
+    AVRational frame_rate =
+        demuxer_guess_frame_rate(&is->demuxer, demuxer_stream_index(&is->demuxer, AVMEDIA_TYPE_VIDEO), NULL);
 
     AVFilterGraph *graph = NULL;
     AVFilterContext *filt_out = NULL, *filt_in = NULL;
@@ -170,8 +172,8 @@ int video_thread(void *arg)
         if (hw_frame_has_data(frame)) {
             FrameData *fd = frame->opaque_ref ? (FrameData *)frame->opaque_ref->data : NULL;
             AVRational hw_tb = is->video_st->time_base;
-            AVRational hw_fr = demuxer_guess_frame_rate(is->demuxer,
-                demuxer_get_stream_index(is->demuxer, AVMEDIA_TYPE_VIDEO), frame);
+            AVRational hw_fr =
+                demuxer_guess_frame_rate(&is->demuxer, demuxer_stream_index(&is->demuxer, AVMEDIA_TYPE_VIDEO), frame);
 
             duration = (hw_fr.num && hw_fr.den ? av_q2d((AVRational){hw_fr.den, hw_fr.num}) : 0);
             pts      = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(hw_tb);
@@ -207,7 +209,7 @@ int video_thread(void *arg)
                 ret = AVERROR(EINVAL);
                 goto the_end;
             }
-            if ((ret = configure_video_filters(graph, is->demuxer, is->video_st, NULL,
+            if ((ret = configure_video_filters(graph, &is->demuxer, is->video_st, NULL,
                                                frame, is->supported_pix_fmts, is->nb_supported_pix_fmts,
                                                &is->in_video_filter, &is->out_video_filter)) < 0) {
                 is->quit_request = 1;

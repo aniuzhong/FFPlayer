@@ -1,247 +1,91 @@
 /**
- * demuxer.h - A wrapper around FFmpeg's AVFormatContext to manage demuxing state and operations.
+ * @file demuxer.h
+ * @brief Demux session state wrapping AVFormatContext (same style as Decoder: struct is exposed).
  */
 
 #ifndef FFPLAY_GUI_DEMUXER_H
 #define FFPLAY_GUI_DEMUXER_H
 
+#include <stdint.h>
+
 #include <SDL_thread.h>
 
 #include <libavformat/avformat.h>
+#include <libavutil/frame.h>
+#include <libavutil/rational.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct Demuxer Demuxer;
+typedef struct Demuxer {
+    AVFormatContext *ic;
+
+    /** -1 = not decided yet; once set, matches demuxer_should_use_byte_seek() (0 = time-based, 1 = byte). */
+    int     seek_mode;
+    int     abort_request;
+    int     eof;
+    double  max_frame_duration;
+    char   *input_url;
+
+    SDL_Thread *read_tid;
+    SDL_mutex  *wait_mutex;
+    SDL_cond   *continue_read_thread;
+
+    int queue_attachments_req;
+    int read_pause_return;
+
+    int st_index[AVMEDIA_TYPE_NB];
+} Demuxer;
 
 /**
- * Create a new Demuxer for the given input URL.
+ * Initialise demuxer shell: allocates AVFormatContext, interrupt callback,
+ * mutex/cond for the read loop, copies @p input_url. Does not open the input.
  */
-Demuxer *demuxer_create(const char *input_url);
+int demuxer_init(Demuxer *d, const char *input_url);
 
 /**
- * Free the resources associated with a Demuxer.
+ * Tear down resources. Call demuxer_stop() first after the read thread was started.
+ * After return, treat @p d as uninitialized.
  */
-void demuxer_free(Demuxer **pp);
+void demuxer_destroy(Demuxer *d);
 
-/**
- * Get the AVFormatContext associated with the demuxer.
- */
-AVFormatContext *demuxer_get_format_context(const Demuxer *d);
+/** Stream index for @p type, or -1 if absent; invalid @p type yields -1. */
+int demuxer_stream_index(const Demuxer *d, enum AVMediaType type);
 
-/**
- * Get the input name (URL or file path) of the demuxer.
- */
-const char *demuxer_get_input_name(const Demuxer *d);
-
-/**
- * Check if the demuxer has reached the end of the file.
- */
-int demuxer_is_eof(const Demuxer *d);
-
-/**
- * Set the EOF (End Of File) state of the demuxer.
- */
-void demuxer_set_eof(Demuxer *d, int eof);
-
-/**
- * Get the current seek mode of the demuxer.
- */
-int demuxer_get_seek_mode(const Demuxer *d);
-
-/**
- * Set the seek mode for the demuxer.
- */
-void demuxer_set_seek_mode(Demuxer *d, int seek_mode);
-
-/**
- * Request the demuxer to abort its current operation.
- */
-void demuxer_request_abort(Demuxer *d);
-
-/**
- * Check if the demuxer operation has been aborted.
- */
-int demuxer_is_aborted(const Demuxer *d);
-
-/**
- * Get the maximum frame duration allowed by the demuxer.
- */
-double demuxer_get_max_frame_duration(const Demuxer *d);
-
-/**
- * Set the maximum frame duration for the demuxer.
- */
-void demuxer_set_max_frame_duration(Demuxer *d, double max_frame_duration);
-
-/**
- * Get the pointer to the maximum frame duration variable.
- */
-double * demuxer_get_max_frame_duration_ptr(Demuxer *d);
-
-/**
- * Get the SDL condition variable used to signal the read thread to continue.
- */
-SDL_cond * demuxer_get_continue_read_thread(const Demuxer *d);
-
-/**
- * Get the status of the queue attachments request.
- */
-int demuxer_get_queue_attachments_req(const Demuxer *d);
-
-/**
- * Set the status for the queue attachments request.
- */
-void demuxer_set_queue_attachments_req(Demuxer *d, int req);
-
-/**
- * Get the return value from the last read pause operation.
- */
-int demuxer_get_read_pause_return(const Demuxer *d);
-
-/**
- * Set the return value for the read pause operation.
- */
-void demuxer_set_read_pause_return(Demuxer *d, int ret);
-
-/**
- * avformat_open_input() wrapper. Currently `options` are unused.
- */
-int demuxer_open_input(Demuxer *d, AVDictionary **options);
-
-/**
- * avformat_find_stream_info() wrapper. Currently `options` are unused.
- */
-int demuxer_find_stream_info(Demuxer *d, AVDictionary **options);
-
-/**
- * Reset AVFormatContext::AVIOContext::eof_reached.
- */
+int  demuxer_open_input(Demuxer *d, AVDictionary **options);
+int  demuxer_find_stream_info(Demuxer *d, AVDictionary **options);
 void demuxer_io_reset_eof(Demuxer *d);
 
-/**
- * Determines if byte-based seeking is recommended for the current format.
- */
-int demuxer_should_use_byte_seek(Demuxer *d);
+int          demuxer_should_use_byte_seek(const Demuxer *d);
+double       demuxer_get_max_gap(const Demuxer *d);
+int          demuxer_is_realtime(const Demuxer *d);
+int          demuxer_find_stream_components(Demuxer *d);
+int          demuxer_is_realtime_network_protocol(const Demuxer *d);
 
-/**
- * Determine the maximum allowed duration between frames based on format stability.
- * For unstable formats (TS), we use a short threshold (10s) to recover quickly.
- * For stable formats, we allow long gaps (1 hour).
- */
-double demuxer_get_max_gap(Demuxer *d);
-
-/*
- * Check if the input format is realtime (e.g. RTSP, RTP, SDP).
- */
-int demuxer_is_realtime(Demuxer *d);
-
-/**
- * av_find_best_stream() wrapper to find the best stream of each media type and store
- */
-int demuxer_find_stream_components(Demuxer *d);
-
-/**
- * Get the stream index for a specific media type.
- */
-int demuxer_get_stream_index(const Demuxer *d, enum AVMediaType type);
-
-/**
- * Checks if the protocol is a real-time network type (now RTSP/MMSH)
- * that requires active polling/delaying during pause.
- */
-int demuxer_is_realtime_network_protocol(Demuxer *d);
-
-/**
- * Read one packet. Thin wrapper around av_read_frame().
- */
-int demuxer_read_packet(Demuxer *d, AVPacket *pkt);
-
-/**
- * Check if the demuxer has encountered an I/O error.
- */
-int demuxer_is_io_error(Demuxer *d);
-
-/**
- * Determine if the demuxer should handle EOF.
- */
-int demuxer_should_handle_eof(Demuxer *d, int ret);
-
-/**
- * Handle stream events for a received packet.
- */
+int  demuxer_read_packet(Demuxer *d, AVPacket *pkt);
+int  demuxer_is_io_error(const Demuxer *d);
+int  demuxer_should_handle_eof(const Demuxer *d, int read_ret);
 void demuxer_handle_pkt_stream_events(Demuxer *d, AVPacket *pkt);
 
-/**
- * Thin wrapper around av_read_play().
- */
 int demuxer_remote_play(Demuxer *d);
-
-/**
- * Thin wrapper around av_read_pause().
- */
 int demuxer_remote_pause(Demuxer *d);
 
-/**
- * ic -> streams -> index -> codecpar -> width
- */
-int demuxer_get_stream_width(const Demuxer *d, int stream_index);
-
-/**
- * ic -> streams -> index -> codecpar -> height
- */
-int demuxer_get_stream_height(const Demuxer *d, int stream_index);
-
-/*
- * Guess the sample aspect ratio for the given stream index
- */
+int       demuxer_get_stream_width(const Demuxer *d, int stream_index);
+int       demuxer_get_stream_height(const Demuxer *d, int stream_index);
 AVRational demuxer_guess_sample_aspect_ratio(const Demuxer *d, int stream_index, AVFrame *frame);
-
-/*
- * Guess the frame rate for the given stream index
- */
 AVRational demuxer_guess_frame_rate(const Demuxer *d, int stream_index, AVFrame *frame);
 
-/**
- * Seek to timestamp ts.
- */
-int demuxer_seek_file(Demuxer *d, int stream_index, int64_t min_ts, int64_t ts, int64_t max_ts, int flags);
+int    demuxer_seek_file(Demuxer *d, int stream_index,
+                         int64_t min_ts, int64_t ts, int64_t max_ts, int flags);
+double demuxer_get_duration_seconds(const Demuxer *d);
+int    demuxer_stream_is_seekable(const Demuxer *d);
+float  demuxer_get_byte_progress(const Demuxer *d);
 
-/**
- * Get the duration of the media file in seconds.
- */
-double demuxer_get_duration_seconds(Demuxer *d);
-
-/**
- * Check if the current stream supports seeking.
- * Returns 1 if seekable (VOD/File), 0 otherwise (Live stream).
- */
-int demuxer_stream_is_seekable(const Demuxer *d);
-
-/**
- * Get the current byte progress of the stream, or -1.0f if not available.
- */
-float demuxer_get_byte_progress(const Demuxer *d);
-
-/**
- * Start read_thread
- */
-int demuxer_start(Demuxer *demuxer, int (*read_thread_fn)(void *), void *arg);
-
-/**
- * Stop the read_thread and wait for it to finish.
- */
+int  demuxer_start(Demuxer *d, int (*read_thread_fn)(void *), void *arg);
 void demuxer_stop(Demuxer *d);
 
-/**
- * Signal the read thread to continue reading.
- */
 void demuxer_notify_continue_read(Demuxer *d);
-
-/**
- * Wait for a signal to continue reading. This is used to implement efficient waiting
- */
 void demuxer_wait_for_continue_reading(Demuxer *d, int32_t timeout_ms);
 
 #ifdef __cplusplus

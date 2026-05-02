@@ -63,7 +63,7 @@ void stream_cycle_channel(VideoState *is, int codec_type);
 /**
  * Accessors 
  */
-Demuxer    *stream_get_demuxer(const VideoState *is);
+Demuxer    *stream_get_demuxer(VideoState *is);
 int         stream_is_paused(const VideoState *is);
 int         stream_get_volume(const VideoState *is);
 int         stream_needs_refresh(const VideoState *is);
