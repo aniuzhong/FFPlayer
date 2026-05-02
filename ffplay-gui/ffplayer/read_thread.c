@@ -14,36 +14,36 @@ static const char *demuxer_media_name(const Demuxer *d)
 
 static int open_stream_components(VideoState *is)
 {
-    int ret = -1;
+    Demuxer *d = &is->demuxer;
+    int vidx = demuxer_stream_index(d, AVMEDIA_TYPE_VIDEO);
+    int aidx = demuxer_stream_index(d, AVMEDIA_TYPE_AUDIO);
+    int sidx = demuxer_stream_index(d, AVMEDIA_TYPE_SUBTITLE);
+    int ret;
 
     is->show_mode = SHOW_MODE_NONE;
-    if (demuxer_stream_index(&is->demuxer, AVMEDIA_TYPE_VIDEO) >= 0) {
-        int vidx = demuxer_stream_index(&is->demuxer, AVMEDIA_TYPE_VIDEO);
-        AVRational sar = demuxer_guess_sample_aspect_ratio(&is->demuxer, vidx, NULL);
-        int width = demuxer_get_stream_width(&is->demuxer, vidx);
-        int height = demuxer_get_stream_height(&is->demuxer, vidx);
+    if (vidx >= 0) {
+        AVRational sar = demuxer_guess_sample_aspect_ratio(d, vidx, NULL);
+        int width  = demuxer_get_stream_width(d, vidx);
+        int height = demuxer_get_stream_height(d, vidx);
         if (width && height && is->on_frame_size_changed)
             is->on_frame_size_changed(is->frame_size_opaque, width, height, sar);
     }
 
-    if (demuxer_stream_index(&is->demuxer, AVMEDIA_TYPE_AUDIO) >= 0) {
-        stream_component_open(is, demuxer_stream_index(&is->demuxer, AVMEDIA_TYPE_AUDIO));
-    }
+    if (aidx >= 0)
+        stream_component_open(is, aidx);
 
     ret = -1;
-    if (demuxer_stream_index(&is->demuxer, AVMEDIA_TYPE_VIDEO) >= 0) {
-        ret = stream_component_open(is, demuxer_stream_index(&is->demuxer, AVMEDIA_TYPE_VIDEO));
-    }
+    if (vidx >= 0)
+        ret = stream_component_open(is, vidx);
     if (is->show_mode == SHOW_MODE_NONE)
         is->show_mode = ret >= 0 ? SHOW_MODE_VIDEO : SHOW_MODE_RDFT;
 
-    if (demuxer_stream_index(&is->demuxer, AVMEDIA_TYPE_SUBTITLE) >= 0) {
-        stream_component_open(is, demuxer_stream_index(&is->demuxer, AVMEDIA_TYPE_SUBTITLE));
-    }
+    if (sidx >= 0)
+        stream_component_open(is, sidx);
 
     if (is->video_stream < 0 && is->audio_stream < 0) {
         av_log(NULL, AV_LOG_FATAL, "Failed to open file '%s' or configure filtergraph\n",
-               demuxer_media_name(&is->demuxer));
+               demuxer_media_name(d));
         return -1;
     }
 
@@ -65,12 +65,12 @@ static void handle_pause_resume(VideoState *is)
     }
 }
 
-static int handle_seek_request(VideoState *is)
+static void handle_seek_request(VideoState *is)
 {
     Demuxer *demuxer = &is->demuxer;
 
     if (!is->seek_req)
-        return 0;
+        return;
 
     int64_t seek_target = is->seek_pos;
     int64_t seek_min    = is->seek_rel > 0 ? seek_target - is->seek_rel + 2: INT64_MIN;
@@ -94,8 +94,6 @@ static int handle_seek_request(VideoState *is)
     demuxer->eof = 0;
     if (is->paused && is->on_step_frame)
         is->on_step_frame(is);
-
-    return 0;
 }
 
 /* queue attached picture packets (e.g., album art) */
@@ -184,10 +182,7 @@ int read_thread(void *arg)
             continue;
         }
 
-        if (handle_seek_request(is) < 0) {
-            ret = -1;
-            goto fail;
-        }
+        handle_seek_request(is);
 
         if (handle_queue_attachments(is, pkt) < 0) {
             ret = -1;
@@ -225,6 +220,7 @@ int read_thread(void *arg)
             is->demuxer.eof = 0;
         }
 
+        demuxer_handle_pkt_stream_events(&is->demuxer, pkt);
         route_packet_to_queue(is, pkt);
     }
 

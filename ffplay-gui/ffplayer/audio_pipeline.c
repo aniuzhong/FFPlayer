@@ -244,9 +244,9 @@ void audio_pipeline_free(AudioPipeline **ap)
     *ap = NULL;
 }
 
-void audio_pipeline_bind(AudioPipeline *ap, AvSync *av_sync, FrameQueue *sampq,
-                          PacketQueue *audioq, AudioDevice *audio_device,
-                          int *paused, int *show_mode)
+void audio_pipeline_bind(AudioPipeline *ap, AVSync *av_sync, FrameQueue *sampq,
+                         PacketQueue *audioq, AudioDevice *audio_device,
+                         int *paused, int *show_mode)
 {
     if (!ap)
         return;

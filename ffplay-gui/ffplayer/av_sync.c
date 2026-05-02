@@ -10,23 +10,23 @@
 #include "clock.h"
 #include "packet_queue.h"
 
-static int av_sync_vid_serial_authority(const AvSync *sync)
+static int av_sync_vid_serial_authority(const AVSync *sync)
 {
     return packet_queue_get_serial(sync->videoq);
 }
 
-static int av_sync_aud_serial_authority(const AvSync *sync)
+static int av_sync_aud_serial_authority(const AVSync *sync)
 {
     return packet_queue_get_serial(sync->audioq);
 }
 
-static int av_sync_ext_serial_authority(const AvSync *sync)
+static int av_sync_ext_serial_authority(const AVSync *sync)
 {
     return clock_get_serial(sync->extclk);
 }
 
 /* Context binding */
-void av_sync_bind(AvSync *sync, Clock *audclk, Clock *vidclk, Clock *extclk,
+void av_sync_bind(AVSync *sync, Clock *audclk, Clock *vidclk, Clock *extclk,
                   PacketQueue *audioq, PacketQueue *videoq, AVStream **audio_st,
                   int *audio_stream, int *video_stream, double *max_frame_duration)
 {
@@ -42,19 +42,19 @@ void av_sync_bind(AvSync *sync, Clock *audclk, Clock *vidclk, Clock *extclk,
 }
 
 /* Master-clock query */
-int get_master_sync_type(const AvSync *sync)
+int get_master_sync_type(const AVSync *sync)
 {
     if (sync->audio_st && *sync->audio_st)
         return AV_SYNC_AUDIO_MASTER;
     return AV_SYNC_EXTERNAL_CLOCK;
 }
 
-int av_sync_is_audio_master(const AvSync *sync)
+int av_sync_is_audio_master(const AVSync *sync)
 {
     return get_master_sync_type(sync) == AV_SYNC_AUDIO_MASTER;
 }
 
-double get_master_clock(const AvSync *sync)
+double get_master_clock(const AVSync *sync)
 {
     double val;
 
@@ -73,7 +73,7 @@ double get_master_clock(const AvSync *sync)
 }
 
 /* Sync control and delay calculation */
-void check_external_clock_speed(AvSync *sync)
+void check_external_clock_speed(AVSync *sync)
 {
     if (*sync->video_stream >= 0 && packet_queue_get_nb_packets(sync->videoq) <= EXTERNAL_CLOCK_MIN_FRAMES ||
         *sync->audio_stream >= 0 && packet_queue_get_nb_packets(sync->audioq) <= EXTERNAL_CLOCK_MIN_FRAMES) {
@@ -91,14 +91,14 @@ void check_external_clock_speed(AvSync *sync)
     }
 }
 
-double av_sync_compute_frame_delay(const AvSync *sync, Frame *lastvp, Frame *vp)
+double av_sync_compute_frame_delay(const AVSync *sync, Frame *lastvp, Frame *vp)
 {
     double last_duration = vp_duration(sync, lastvp, vp);
     return compute_target_delay(last_duration, sync);
 }
 
 /* Keep this low-level helper exposed for compatibility. */
-double compute_target_delay(double delay, const AvSync *sync)
+double compute_target_delay(double delay, const AVSync *sync)
 {
     double sync_threshold, diff = 0;
 
@@ -122,7 +122,7 @@ double compute_target_delay(double delay, const AvSync *sync)
     return delay;
 }
 
-double vp_duration(const AvSync *sync, Frame *vp, Frame *nextvp)
+double vp_duration(const AVSync *sync, Frame *vp, Frame *nextvp)
 {
     if (vp->serial == nextvp->serial) {
         double duration = nextvp->pts - vp->pts;
@@ -136,35 +136,35 @@ double vp_duration(const AvSync *sync, Frame *vp, Frame *nextvp)
 }
 
 /* Clock update helpers */
-void update_video_pts(AvSync *sync, double pts, int serial)
+void update_video_pts(AVSync *sync, double pts, int serial)
 {
     set_clock(sync->vidclk, pts, serial);
     sync_clock_to_slave(sync->extclk, av_sync_ext_serial_authority(sync),
                         sync->vidclk, av_sync_vid_serial_authority(sync));
 }
 
-void av_sync_update_video_pts_if_valid(AvSync *sync, double pts, int serial)
+void av_sync_update_video_pts_if_valid(AVSync *sync, double pts, int serial)
 {
     if (!isnan(pts))
         update_video_pts(sync, pts, serial);
 }
 
-double av_sync_audio_master_diff(const AvSync *sync)
+double av_sync_audio_master_diff(const AVSync *sync)
 {
     return get_clock(sync->audclk, av_sync_aud_serial_authority(sync)) - get_master_clock(sync);
 }
 
-double av_sync_video_master_diff(const AvSync *sync, double video_clock)
+double av_sync_video_master_diff(const AVSync *sync, double video_clock)
 {
     return video_clock - get_master_clock(sync);
 }
 
-int av_sync_is_external_clock_master(const AvSync *sync)
+int av_sync_is_external_clock_master(const AVSync *sync)
 {
     return get_master_sync_type(sync) == AV_SYNC_EXTERNAL_CLOCK;
 }
 
-int av_sync_should_late_drop(const AvSync *sync, int step, double time, double frame_timer, double duration)
+int av_sync_should_late_drop(const AVSync *sync, int step, double time, double frame_timer, double duration)
 {
     return !step &&
            get_master_sync_type(sync) != AV_SYNC_VIDEO_MASTER &&
@@ -176,7 +176,7 @@ int av_sync_should_reset_frame_timer(double delay, double time, double frame_tim
     return delay > 0 && time - frame_timer > AV_SYNC_THRESHOLD_MAX;
 }
 
-int av_sync_should_early_drop(const AvSync *sync,
+int av_sync_should_early_drop(const AVSync *sync,
                               double video_clock,
                               double frame_last_filter_delay,
                               int video_pkt_serial,
@@ -201,13 +201,13 @@ int av_sync_should_clear_frame_filter_delay(double frame_last_filter_delay)
     return fabs(frame_last_filter_delay) > AV_NOSYNC_THRESHOLD / 10.0;
 }
 
-void av_sync_sync_extclk_to_audclk(AvSync *sync)
+void av_sync_sync_extclk_to_audclk(AVSync *sync)
 {
     sync_clock_to_slave(sync->extclk, av_sync_ext_serial_authority(sync),
                         sync->audclk, av_sync_aud_serial_authority(sync));
 }
 
-void av_sync_seek_reset_extclk(AvSync *sync, int by_bytes, int64_t seek_target)
+void av_sync_seek_reset_extclk(AVSync *sync, int by_bytes, int64_t seek_target)
 {
     if (by_bytes)
         set_clock(sync->extclk, NAN, 0);
@@ -215,7 +215,7 @@ void av_sync_seek_reset_extclk(AvSync *sync, int by_bytes, int64_t seek_target)
         set_clock(sync->extclk, seek_target / (double)AV_TIME_BASE, 0);
 }
 
-void av_sync_update_audclk_from_callback(AvSync *sync,
+void av_sync_update_audclk_from_callback(AVSync *sync,
                                          double audio_clock,
                                          int audio_clock_serial,
                                          int audio_hw_buf_size,
@@ -230,7 +230,7 @@ void av_sync_update_audclk_from_callback(AvSync *sync,
 }
 
 /* Pause/resume orchestration helper */
-void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int read_pause_return)
+void av_sync_toggle_pause(AVSync *sync, int *paused, double *frame_timer, int read_pause_return)
 {
     if (*paused) {
         *frame_timer += av_gettime_relative() / 1000000.0 - clock_get_last_updated(sync->vidclk);

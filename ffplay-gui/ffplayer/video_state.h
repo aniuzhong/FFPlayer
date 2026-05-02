@@ -30,7 +30,7 @@ typedef struct VideoState {
     Clock *audclk;
     Clock *vidclk;
     Clock *extclk;
-    AvSync av_sync;
+    AVSync av_sync;
 
     FrameQueue *pictq;
     FrameQueue *subpq;

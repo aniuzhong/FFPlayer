@@ -17,13 +17,13 @@ enum ShowMode {
 };
 
 /* Forward declarations for borrowed references */
-typedef struct AvSync AvSync;
+typedef struct AVSync AVSync;
 typedef struct FrameQueue FrameQueue;
 typedef struct PacketQueue PacketQueue;
 
 typedef struct AudioPipeline {
     /* Borrowed references (not owned, set via audio_pipeline_bind) */
-    AvSync *av_sync;
+    AVSync *av_sync;
     FrameQueue *sampq;
     PacketQueue *audioq;
     AudioDevice *audio_device;
@@ -67,7 +67,7 @@ typedef struct AudioPipeline {
 AudioPipeline *audio_pipeline_create(void);
 void audio_pipeline_free(AudioPipeline **ap);
 
-void audio_pipeline_bind(AudioPipeline *ap, AvSync *av_sync, FrameQueue *sampq,
+void audio_pipeline_bind(AudioPipeline *ap, AVSync *av_sync, FrameQueue *sampq,
                          PacketQueue *audioq, AudioDevice *audio_device, int *paused, int *show_mode);
 
 int audio_pipeline_open(void *opaque, AVChannelLayout *wanted_channel_layout,

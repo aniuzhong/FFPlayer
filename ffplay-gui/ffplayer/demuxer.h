@@ -1,6 +1,5 @@
 /**
- * @file demuxer.h
- * @brief Demux session state wrapping AVFormatContext (same style as Decoder: struct is exposed).
+ * Demux session state wrapping AVFormatContext (same style as Decoder: struct is exposed).
  */
 
 #ifndef FFPLAY_GUI_DEMUXER_H
@@ -57,11 +56,11 @@ int  demuxer_open_input(Demuxer *d, AVDictionary **options);
 int  demuxer_find_stream_info(Demuxer *d, AVDictionary **options);
 void demuxer_io_reset_eof(Demuxer *d);
 
-int          demuxer_should_use_byte_seek(const Demuxer *d);
-double       demuxer_get_max_gap(const Demuxer *d);
-int          demuxer_is_realtime(const Demuxer *d);
-int          demuxer_find_stream_components(Demuxer *d);
-int          demuxer_is_realtime_network_protocol(const Demuxer *d);
+int    demuxer_should_use_byte_seek(const Demuxer *d);
+double demuxer_get_max_gap(const Demuxer *d);
+int    demuxer_is_realtime(const Demuxer *d);
+int    demuxer_find_stream_components(Demuxer *d);
+int    emuxer_is_realtime_network_protocol(const Demuxer *d);
 
 int  demuxer_read_packet(Demuxer *d, AVPacket *pkt);
 int  demuxer_is_io_error(const Demuxer *d);
@@ -71,8 +70,8 @@ void demuxer_handle_pkt_stream_events(Demuxer *d, AVPacket *pkt);
 int demuxer_remote_play(Demuxer *d);
 int demuxer_remote_pause(Demuxer *d);
 
-int       demuxer_get_stream_width(const Demuxer *d, int stream_index);
-int       demuxer_get_stream_height(const Demuxer *d, int stream_index);
+int        demuxer_get_stream_width(const Demuxer *d, int stream_index);
+int        demuxer_get_stream_height(const Demuxer *d, int stream_index);
 AVRational demuxer_guess_sample_aspect_ratio(const Demuxer *d, int stream_index, AVFrame *frame);
 AVRational demuxer_guess_frame_rate(const Demuxer *d, int stream_index, AVFrame *frame);
 
