@@ -568,7 +568,11 @@ void Application::RenderImGui()
             inf_idx = 1;
         else
             inf_idx = 2;
-        const char *inf_labels[] = { "auto (-1)", "off: throttle queues (0)", "on: unbounded read (1)" };
+        const char *inf_labels[] = {
+            "auto (-1)", // auto-detect realtime protocol
+            "off: (0)", // throttle queues
+            "on: (1)" // unbounded read
+        };
         const ImGuiStyle &st = ImGui::GetStyle();
         float inf_combo_w = 0.0f;
         for (int i = 0; i < IM_ARRAYSIZE(inf_labels); ++i)

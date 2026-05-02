@@ -2,6 +2,7 @@
 
 #include <SDL_thread.h>
 
+#include <libavutil/dict.h>
 #include <libavutil/error.h>
 #include <libavutil/mem.h>
 #include <libavformat/avformat.h>
@@ -16,6 +17,8 @@ static const char *input_name_for_log(const Demuxer *d)
     return (d && d->input_url) ? d->input_url : "";
 }
 
+/* AVFormatContext::interrupt_callback: must mirror stream_close()'s ordering:
+ * set demuxer.abort_request before demuxer_stop so blocking I/O exits quickly. */
 static int decode_interrupt_cb(void *ctx)
 {
     Demuxer *demuxer = (Demuxer *)ctx;
@@ -111,32 +114,46 @@ int demuxer_stream_index(const Demuxer *d, enum AVMediaType type)
     return d->st_index[type];
 }
 
-int demuxer_open_input(Demuxer *d, AVDictionary **options)
+int demuxer_open_input(Demuxer *d, AVDictionary **format_opts)
 {
-    AVDictionary *open_opts = NULL;
-    (void)options;
-    if (!av_dict_get(open_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
-        av_dict_set(&open_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
-    int err = avformat_open_input(&d->ic, input_name_for_log(d), NULL, &open_opts);
-    av_dict_free(&open_opts);
-    if (err < 0) {
+    if (!d || !d->ic)
+        return AVERROR(EINVAL);
+
+    AVDictionary *transient = NULL;
+    AVDictionary **opt_ref  = format_opts ? format_opts : &transient;
+
+    if (!av_dict_get(*opt_ref, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE))
+        av_dict_set(opt_ref, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
+
+    int err = avformat_open_input(&d->ic, input_name_for_log(d), NULL, opt_ref);
+    if (err < 0)
         print_error(input_name_for_log(d), err);
-        return -1;
-    }
-    return 0;
+
+    if (!format_opts)
+        av_dict_free(&transient);
+
+    return err;
 }
 
-int demuxer_find_stream_info(Demuxer *d, AVDictionary **options)
+int demuxer_find_stream_info(Demuxer *d, AVDictionary **stream_opts)
 {
-    (void)options;
-    int err = avformat_find_stream_info(d->ic, NULL);
-    if (err < 0) {
+    if (!d || !d->ic)
+        return AVERROR(EINVAL);
+
+    int err = avformat_find_stream_info(d->ic, stream_opts);
+    if (err < 0)
         av_log(NULL, AV_LOG_WARNING,
-               "%s: could not find codec parameters\n",
-               input_name_for_log(d));
-        return -1;
-    }
-    return 0;
+               "%s: could not find codec parameters (%d)\n",
+               input_name_for_log(d), err);
+    return err;
+}
+
+void demuxer_set_stream_metadata_fn(Demuxer *d, DemuxerStreamMetadataFn fn, void *opaque)
+{
+    if (!d)
+        return;
+    d->on_stream_metadata         = fn;
+    d->stream_metadata_opaque     = opaque;
 }
 
 void demuxer_io_reset_eof(Demuxer *d)
@@ -198,9 +215,9 @@ int demuxer_is_realtime(const Demuxer *d)
 
 int demuxer_find_stream_components(Demuxer *d)
 {
-    if (!d->ic) {
+    if (!d || !d->ic) {
         av_log(NULL, AV_LOG_ERROR, "AVFormatContext not initialized\n");
-        return -1;
+        return AVERROR(EINVAL);
     }
 
     for (int i = 0; i < d->ic->nb_streams; i++) {
@@ -245,7 +262,7 @@ int demuxer_is_realtime_network_protocol(const Demuxer *d)
 
 int demuxer_read_packet(Demuxer *d, AVPacket *pkt)
 {
-    if (!d || !pkt)
+    if (!d || !d->ic || !pkt)
         return AVERROR(EINVAL);
     return av_read_frame(d->ic, pkt);
 }
@@ -268,7 +285,10 @@ int demuxer_should_handle_eof(const Demuxer *d, int ret)
 
 void demuxer_handle_pkt_stream_events(Demuxer *d, AVPacket *pkt)
 {
-    AVFormatContext *ic = d->ic;
+    AVFormatContext *ic;
+    if (!d)
+        return;
+    ic = d->ic;
     if (!ic || !pkt)
         return;
 
@@ -277,6 +297,10 @@ void demuxer_handle_pkt_stream_events(Demuxer *d, AVPacket *pkt)
 
     AVStream *st = ic->streams[pkt->stream_index];
     if (st->event_flags & AVSTREAM_EVENT_FLAG_METADATA_UPDATED) {
+        if (d->on_stream_metadata)
+            d->on_stream_metadata(d->stream_metadata_opaque, pkt->stream_index,
+                                  st->metadata);
+        /* Drop the edge so incremental updates do not accumulate without fresh packets. */
         st->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
     }
 }

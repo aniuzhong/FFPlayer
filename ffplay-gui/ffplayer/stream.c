@@ -923,7 +923,9 @@ void stream_close(VideoState *is)
 {
     if (!is)
         return;
+    /* interrupt_callback observes this; wakeup unblocks throttle waits promptly */
     is->demuxer.abort_request = 1;
+    demuxer_notify_continue_read(&is->demuxer);
     demuxer_stop(&is->demuxer);
     if (is->audio_stream >= 0)
         stream_component_close(is, is->audio_stream);

@@ -161,8 +161,9 @@ int read_thread(void *arg)
 
     is->demuxer.max_frame_duration = demuxer_get_max_gap(&is->demuxer);
 
-    if (demuxer_find_stream_components(&is->demuxer) < 0) {
-        ret = -1;
+    err = demuxer_find_stream_components(&is->demuxer);
+    if (err < 0) {
+        ret = err;
         goto fail;
     }
 
@@ -193,10 +194,10 @@ int read_thread(void *arg)
         }
 
         /* throttle reading if queue is full or has enough packets (ffplay infinite_buffer) */
-        if (is->infinite_buffer < 1 &&
-              (packet_queue_get_size(is->audioq) +
-               packet_queue_get_size(is->videoq) +
-               packet_queue_get_size(is->subtitleq) > MAX_QUEUE_SIZE
+        int aq_size = packet_queue_get_size(is->audioq);
+        int vq_size = packet_queue_get_size(is->videoq);
+        int sq_size = packet_queue_get_size(is->subtitleq);
+        if (is->infinite_buffer < 1 && (aq_size + vq_size + sq_size > MAX_QUEUE_SIZE
             || (stream_has_enough_packets(is->audio_st, is->audio_stream, is->audioq) &&
                 stream_has_enough_packets(is->video_st, is->video_stream, is->videoq) &&
                 stream_has_enough_packets(is->subtitle_st, is->subtitle_stream, is->subtitleq)))) {
