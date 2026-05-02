@@ -74,6 +74,8 @@ private:
     bool quit_requested_ = false;
     /** ffplay infinite_buffer: -1 auto, 0 throttle, 1 unbounded (-infbuf). Persisted across Stop / new player. */
     int startup_infinite_buffer_ = -1;
+    /** ffplay -sync: @c FFPLAYER_AV_SYNC_* . Persisted across Stop / new player. */
+    int startup_av_sync_type_ = FFPLAYER_AV_SYNC_AUDIO_MASTER;
 };
 
 #endif

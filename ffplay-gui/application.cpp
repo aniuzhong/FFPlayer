@@ -146,6 +146,7 @@ int Application::Execute()
         ffplayer_set_hw_device_ctx(player_, hw);
     ffplayer_set_frame_size_callback(player_, Application::OnFrameSizeChanged, this);
     ffplayer_set_infinite_buffer(player_, startup_infinite_buffer_);
+    ffplayer_set_av_sync_type(player_, startup_av_sync_type_);
     InitImGui();
 
     MainLoop();
@@ -449,6 +450,7 @@ void Application::StopPlaybackAndReset()
         ffplayer_set_hw_device_ctx(player_, hw);
     ffplayer_set_frame_size_callback(player_, Application::OnFrameSizeChanged, this);
     ffplayer_set_infinite_buffer(player_, startup_infinite_buffer_);
+    ffplayer_set_av_sync_type(player_, startup_av_sync_type_);
 
     video_open_done_ = 0;
     pending_seek_ratio_ = -1.0f;
@@ -584,6 +586,32 @@ void Application::RenderImGui()
             startup_infinite_buffer_ = (inf_idx == 0) ? -1 : (inf_idx == 1) ? 0 : 1;
             ffplayer_set_infinite_buffer(player_, startup_infinite_buffer_);
         }
+
+        ImGui::SameLine(0.0f, 24.0f);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("-sync");
+        ImGui::SameLine();
+        ImGui::TextUnformatted("=");
+        ImGui::SameLine();
+        int sync_idx = startup_av_sync_type_;
+        if (sync_idx < FFPLAYER_AV_SYNC_AUDIO_MASTER || sync_idx > FFPLAYER_AV_SYNC_EXTERNAL_CLOCK)
+            sync_idx = FFPLAYER_AV_SYNC_AUDIO_MASTER;
+        const char *sync_labels[] = {
+            "audio",
+            "video",
+            "ext",
+        };
+        float sync_combo_w = 0.0f;
+        for (int i = 0; i < IM_ARRAYSIZE(sync_labels); ++i)
+            sync_combo_w = FFMAX(sync_combo_w, ImGui::CalcTextSize(sync_labels[i], nullptr, true).x);
+        sync_combo_w += st.FramePadding.x * 2.0f + ImGui::GetFrameHeight();
+        sync_combo_w = FFMIN(sync_combo_w, ImGui::GetContentRegionAvail().x);
+        ImGui::SetNextItemWidth(sync_combo_w);
+        if (ImGui::Combo("##sync", &sync_idx, sync_labels, IM_ARRAYSIZE(sync_labels))) {
+            startup_av_sync_type_ = sync_idx;
+            ffplayer_set_av_sync_type(player_, startup_av_sync_type_);
+        }
+
         ImGui::End();
         ImGui::PopStyleColor();
         ImGui::PopStyleVar(2);

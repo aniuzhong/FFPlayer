@@ -397,6 +397,18 @@ void stream_set_infinite_buffer(VideoState *is, int infinite_buffer)
         is->infinite_buffer = 1;
 }
 
+int stream_get_av_sync_type(const VideoState *is)
+{
+    return is ? is->av_sync_type : AV_SYNC_AUDIO_MASTER;
+}
+
+void stream_set_av_sync_type(VideoState *is, int av_sync_type)
+{
+    if (!is)
+        return;
+    is->av_sync_type = av_clip(av_sync_type, AV_SYNC_AUDIO_MASTER, AV_SYNC_EXTERNAL_CLOCK);
+}
+
 int stream_has_quit_request(const VideoState *is)
 {
     if (!is)
@@ -565,6 +577,7 @@ VideoState *stream_open(const char *filename,
                         int nb_supported_pix_fmts,
                         AVBufferRef *hw_device_ctx,
                         int infinite_buffer,
+                        int av_sync_type,
                         void (*frame_size_changed_cb)(void *opaque, int width, int height, AVRational sar),
                         void *frame_size_opaque)
 {
@@ -583,6 +596,7 @@ VideoState *stream_open(const char *filename,
     is->video_decoder_uses_hw = 0;
     is->hw_fallback_triggered = 0;
     is->infinite_buffer = infinite_buffer;
+    is->av_sync_type = av_clip(av_sync_type, AV_SYNC_AUDIO_MASTER, AV_SYNC_EXTERNAL_CLOCK);
 
     if (demuxer_init(&is->demuxer, filename) < 0)
         goto fail;
@@ -622,9 +636,9 @@ VideoState *stream_open(const char *filename,
     if (!is->vidclk || !is->audclk || !is->extclk)
         goto fail;
     av_sync_bind(&is->av_sync, is->audclk, is->vidclk, is->extclk,
-                 is->audioq, is->videoq, &is->audio_st,
+                 is->audioq, is->videoq, &is->audio_st, &is->video_st,
                  &is->audio_stream, &is->video_stream,
-                 &is->demuxer.max_frame_duration);
+                 &is->demuxer.max_frame_duration, &is->av_sync_type);
 
     is->audio_pipeline = audio_pipeline_create();
     if (!is->audio_pipeline)

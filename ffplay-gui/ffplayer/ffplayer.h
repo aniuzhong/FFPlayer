@@ -62,6 +62,17 @@ enum FFPlayerShowMode {
 #define FFPLAYER_CURSOR_HIDE_DELAY 1000000
 
 /**
+ * @brief Master clock / A-V sync source (ffplay @c -sync audio|video|ext).
+ *
+ * Numeric values match the internal @c AV_SYNC_* enumeration used by the player core.
+ */
+enum FFPlayerAvSyncType {
+    FFPLAYER_AV_SYNC_AUDIO_MASTER = 0,
+    FFPLAYER_AV_SYNC_VIDEO_MASTER = 1,
+    FFPLAYER_AV_SYNC_EXTERNAL_CLOCK = 2,
+};
+
+/**
  * @brief Create and initialize an FFPlayer instance.
  *
  * @param[in] audio_device Associated audio device.
@@ -119,6 +130,19 @@ void ffplayer_set_infinite_buffer(FFPlayer *p, int infinite_buffer);
  *        otherwise the value set for the next open.
  */
 int ffplayer_get_infinite_buffer(const FFPlayer *p);
+
+/**
+ * @brief Set A-V master clock mode for the next open and optionally the current session (ffplay @c -sync).
+ *
+ * @param av_sync_type @ref FFPLAYER_AV_SYNC_AUDIO_MASTER, @ref FFPLAYER_AV_SYNC_VIDEO_MASTER,
+ *                     or @ref FFPLAYER_AV_SYNC_EXTERNAL_CLOCK. Invalid values are clamped.
+ */
+void ffplayer_set_av_sync_type(FFPlayer *p, int av_sync_type);
+
+/**
+ * @brief Current sync mode: live @c VideoState if open, else the value used on next @c ffplayer_open().
+ */
+int ffplayer_get_av_sync_type(const FFPlayer *p);
 
 /**
  * @brief Toggle pause state.

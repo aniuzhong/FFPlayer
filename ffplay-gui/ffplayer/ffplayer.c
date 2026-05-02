@@ -1,7 +1,9 @@
 #include <string.h>
 #include <libavutil/mem.h>
+#include <libavutil/common.h>
 
 #include "stream.h"
+#include "av_sync.h"
 #include "ffplayer.h"
 
 #define FFPLAYER_MAX_PIX_FMTS 32
@@ -18,6 +20,8 @@ struct FFPlayer {
      * -1 auto, 0 throttle, 1 unbounded. Applied to VideoState in ffplayer_open.
      */
     int infinite_buffer;
+    /** ffplay -sync / VideoState::av_sync_type */
+    int av_sync_type;
     /* Optional borrowed reference to a hardware device context. The
      * player keeps its own ref-count via av_buffer_ref(); it is
      * forwarded to stream_open() and ultimately to the video decoder. */
@@ -44,6 +48,7 @@ FFPlayer *ffplayer_create(AudioDevice *audio_device)
     p->audio_device = audio_device;
     p->is = NULL;
     p->infinite_buffer = -1;
+    p->av_sync_type = AV_SYNC_AUDIO_MASTER;
     return p;
 }
 
@@ -70,6 +75,7 @@ int ffplayer_open(FFPlayer *p, const char *url)
                          p->supported_pix_fmts, p->nb_supported_pix_fmts,
                          p->hw_device_ctx,
                          p->infinite_buffer,
+                         p->av_sync_type,
                          ffplayer_on_frame_size_changed, p);
     return p->is ? 0 : -1;
 }
@@ -103,6 +109,24 @@ int ffplayer_get_infinite_buffer(const FFPlayer *p)
     if (p->is)
         return stream_get_infinite_buffer(p->is);
     return p->infinite_buffer;
+}
+
+void ffplayer_set_av_sync_type(FFPlayer *p, int av_sync_type)
+{
+    if (!p)
+        return;
+    p->av_sync_type = av_clip(av_sync_type, AV_SYNC_AUDIO_MASTER, AV_SYNC_EXTERNAL_CLOCK);
+    if (p->is)
+        stream_set_av_sync_type(p->is, p->av_sync_type);
+}
+
+int ffplayer_get_av_sync_type(const FFPlayer *p)
+{
+    if (!p)
+        return AV_SYNC_AUDIO_MASTER;
+    if (p->is)
+        return stream_get_av_sync_type(p->is);
+    return p->av_sync_type;
 }
 
 /* -- Playback control --------------------------- */

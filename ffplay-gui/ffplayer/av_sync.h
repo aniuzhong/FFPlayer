@@ -1,12 +1,10 @@
 /*
  * AV sync implementation.
  *
- * To be fully equivalent to the behavior of src/ffplay.c, AVSync must satisfy:
+ * To match ffplay src/ffplay.c master-clock selection, AVSync must satisfy:
  * - The members in AVSync are borrowed references;
- *   they do not perform ownership management and do not maintain an independent state machine;
- * - Each computation reads the current clocks, the current queue packet count/serial,
- *   and the current stream availability;
- * - Without altering the original call order or thread boundaries;
+ * - @c av_sync_type points at the session's requested mode (ffplay @c -sync);
+ *   @c get_master_sync_type applies stream fallbacks (missing video/audio);
  */
 
 #ifndef FFPLAY_GUI_AV_SYNC_H
@@ -35,9 +33,11 @@ typedef struct AVSync {
     PacketQueue *audioq;
     PacketQueue *videoq;
     AVStream    **audio_st;
+    AVStream    **video_st;
     int         *audio_stream;
     int         *video_stream;
     double      *max_frame_duration;
+    int         *av_sync_type;
 } AVSync;
 
 enum {
@@ -55,7 +55,8 @@ extern "C" {
  */
 void av_sync_bind(AVSync *sync, Clock *audclk, Clock *vidclk, Clock *extclk,
                   PacketQueue *audioq, PacketQueue *videoq, AVStream **audio_st,
-                  int *audio_stream, int *video_stream, double *max_frame_duration);
+                  AVStream **video_st, int *audio_stream, int *video_stream,
+                  double *max_frame_duration, int *av_sync_type);
 
 /**
  * Master-clock query

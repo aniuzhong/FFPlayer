@@ -30,6 +30,8 @@ typedef struct VideoState {
     Clock *audclk;
     Clock *vidclk;
     Clock *extclk;
+    /** ffplay VideoState::av_sync_type / -sync audio|video|ext */
+    int av_sync_type;
     AVSync av_sync;
 
     FrameQueue *pictq;

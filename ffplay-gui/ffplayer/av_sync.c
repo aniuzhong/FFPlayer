@@ -28,7 +28,8 @@ static int av_sync_ext_serial_authority(const AVSync *sync)
 /* Context binding */
 void av_sync_bind(AVSync *sync, Clock *audclk, Clock *vidclk, Clock *extclk,
                   PacketQueue *audioq, PacketQueue *videoq, AVStream **audio_st,
-                  int *audio_stream, int *video_stream, double *max_frame_duration)
+                  AVStream **video_st, int *audio_stream, int *video_stream,
+                  double *max_frame_duration, int *av_sync_type)
 {
     sync->audclk = audclk;
     sync->vidclk = vidclk;
@@ -36,17 +37,29 @@ void av_sync_bind(AVSync *sync, Clock *audclk, Clock *vidclk, Clock *extclk,
     sync->audioq = audioq;
     sync->videoq = videoq;
     sync->audio_st = audio_st;
+    sync->video_st = video_st;
     sync->audio_stream = audio_stream;
     sync->video_stream = video_stream;
     sync->max_frame_duration = max_frame_duration;
+    sync->av_sync_type = av_sync_type;
 }
 
 /* Master-clock query */
 int get_master_sync_type(const AVSync *sync)
 {
-    if (sync->audio_st && *sync->audio_st)
-        return AV_SYNC_AUDIO_MASTER;
-    return AV_SYNC_EXTERNAL_CLOCK;
+    if (*sync->av_sync_type == AV_SYNC_VIDEO_MASTER) {
+        if (sync->video_st && *sync->video_st)
+            return AV_SYNC_VIDEO_MASTER;
+        else
+            return AV_SYNC_AUDIO_MASTER;
+    } else if (*sync->av_sync_type == AV_SYNC_AUDIO_MASTER) {
+        if (sync->audio_st && *sync->audio_st)
+            return AV_SYNC_AUDIO_MASTER;
+        else
+            return AV_SYNC_EXTERNAL_CLOCK;
+    } else {
+        return AV_SYNC_EXTERNAL_CLOCK;
+    }
 }
 
 int av_sync_is_audio_master(const AVSync *sync)
