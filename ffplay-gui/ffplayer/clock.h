@@ -1,7 +1,7 @@
 /*
  * Clock implementation.
  *
- * Add getters/setters:
+ * Getters/setters:
  * - clock_get_pts
  * - clock_get_last_updated
  * - clock_get_speed
@@ -9,15 +9,14 @@
  * - clock_get_paused
  * - clock_set_paused
  *
- * Keep queue serial source binding inside the clock module:
- * - clock_init_from_packet_queue
- * - clock_init_from_clock
+ * Obsolete-clock detection compares Clock.serial with authoritative_serial
+ * passed into get_clock (callers supply queue serial via packet_queue_get_serial
+ * or extclk identity via clock_get_serial(extclk)).
  */
 
 #ifndef FFPLAY_GUI_CLOCK_H
 #define FFPLAY_GUI_CLOCK_H
 
-typedef struct PacketQueue PacketQueue;
 typedef struct Clock Clock;
 
 #ifdef __cplusplus
@@ -25,7 +24,7 @@ extern "C" {
 #endif
 
 /**
- * Allocate and initialize a clock instance.
+ * Allocate and initialize a clock instance (speed 1.0, not paused).
  */
 Clock *clock_create(void);
 
@@ -36,8 +35,9 @@ void clock_destroy(Clock **c);
 
 /**
  * Return effective clock value considering drift, speed, and pause state.
+ * authoritative_serial must match Clock.serial or the clock is stale (NAN).
  */
-double get_clock(Clock *c);
+double get_clock(Clock *c, int authoritative_serial);
 
 /**
  * Return raw pts stored in clock.
@@ -70,16 +70,6 @@ int clock_get_paused(const Clock *c);
 void clock_set_paused(Clock *c, int paused);
 
 /**
- * Initialize clock and bind serial source to a packet queue.
- */
-void clock_init_from_packet_queue(Clock *c, PacketQueue *q);
-
-/**
- * Initialize clock and bind serial source to another clock.
- */
-void clock_init_from_clock(Clock *c, Clock *serial_source);
-
-/**
  * Set clock at a specified wall-clock time.
  */
 void set_clock_at(Clock *c, double pts, int serial, double time);
@@ -91,13 +81,15 @@ void set_clock(Clock *c, double pts, int serial);
 
 /**
  * Update clock speed while preserving continuity.
+ * authoritative_serial is used for stale detection when sampling current PTS.
  */
-void set_clock_speed(Clock *c, double speed);
+void set_clock_speed(Clock *c, double speed, int authoritative_serial);
 
 /**
  * Pull clock to slave clock if drift exceeds threshold.
  */
-void sync_clock_to_slave(Clock *c, Clock *slave);
+void sync_clock_to_slave(Clock *c, int c_authoritative_serial,
+                         Clock *slave, int slave_authoritative_serial);
 
 #ifdef __cplusplus
 }

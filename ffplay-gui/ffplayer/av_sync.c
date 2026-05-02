@@ -10,6 +10,21 @@
 #include "clock.h"
 #include "packet_queue.h"
 
+static int av_sync_vid_serial_authority(const AvSync *sync)
+{
+    return packet_queue_get_serial(sync->videoq);
+}
+
+static int av_sync_aud_serial_authority(const AvSync *sync)
+{
+    return packet_queue_get_serial(sync->audioq);
+}
+
+static int av_sync_ext_serial_authority(const AvSync *sync)
+{
+    return clock_get_serial(sync->extclk);
+}
+
 /* Context binding */
 void av_sync_bind(AvSync *sync, Clock *audclk, Clock *vidclk, Clock *extclk,
                   PacketQueue *audioq, PacketQueue *videoq, AVStream **audio_st,
@@ -45,13 +60,13 @@ double get_master_clock(const AvSync *sync)
 
     switch (get_master_sync_type(sync)) {
         case AV_SYNC_VIDEO_MASTER:
-            val = get_clock(sync->vidclk);
+            val = get_clock(sync->vidclk, av_sync_vid_serial_authority(sync));
             break;
         case AV_SYNC_AUDIO_MASTER:
-            val = get_clock(sync->audclk);
+            val = get_clock(sync->audclk, av_sync_aud_serial_authority(sync));
             break;
         default:
-            val = get_clock(sync->extclk);
+            val = get_clock(sync->extclk, av_sync_ext_serial_authority(sync));
             break;
     }
     return val;
@@ -62,14 +77,17 @@ void check_external_clock_speed(AvSync *sync)
 {
     if (*sync->video_stream >= 0 && packet_queue_get_nb_packets(sync->videoq) <= EXTERNAL_CLOCK_MIN_FRAMES ||
         *sync->audio_stream >= 0 && packet_queue_get_nb_packets(sync->audioq) <= EXTERNAL_CLOCK_MIN_FRAMES) {
-        set_clock_speed(sync->extclk, FFMAX(EXTERNAL_CLOCK_SPEED_MIN, clock_get_speed(sync->extclk) - EXTERNAL_CLOCK_SPEED_STEP));
+        set_clock_speed(sync->extclk, FFMAX(EXTERNAL_CLOCK_SPEED_MIN, clock_get_speed(sync->extclk) - EXTERNAL_CLOCK_SPEED_STEP),
+                        av_sync_ext_serial_authority(sync));
     } else if ((*sync->video_stream < 0 || packet_queue_get_nb_packets(sync->videoq) > EXTERNAL_CLOCK_MAX_FRAMES) &&
                (*sync->audio_stream < 0 || packet_queue_get_nb_packets(sync->audioq) > EXTERNAL_CLOCK_MAX_FRAMES)) {
-        set_clock_speed(sync->extclk, FFMIN(EXTERNAL_CLOCK_SPEED_MAX, clock_get_speed(sync->extclk) + EXTERNAL_CLOCK_SPEED_STEP));
+        set_clock_speed(sync->extclk, FFMIN(EXTERNAL_CLOCK_SPEED_MAX, clock_get_speed(sync->extclk) + EXTERNAL_CLOCK_SPEED_STEP),
+                        av_sync_ext_serial_authority(sync));
     } else {
         double speed = clock_get_speed(sync->extclk);
         if (speed != 1.0)
-            set_clock_speed(sync->extclk, speed + EXTERNAL_CLOCK_SPEED_STEP * (1.0 - speed) / fabs(1.0 - speed));
+            set_clock_speed(sync->extclk, speed + EXTERNAL_CLOCK_SPEED_STEP * (1.0 - speed) / fabs(1.0 - speed),
+                            av_sync_ext_serial_authority(sync));
     }
 }
 
@@ -85,7 +103,7 @@ double compute_target_delay(double delay, const AvSync *sync)
     double sync_threshold, diff = 0;
 
     if (get_master_sync_type(sync) != AV_SYNC_VIDEO_MASTER) {
-        diff = get_clock(sync->vidclk) - get_master_clock(sync);
+        diff = get_clock(sync->vidclk, av_sync_vid_serial_authority(sync)) - get_master_clock(sync);
 
         sync_threshold = FFMAX(AV_SYNC_THRESHOLD_MIN, FFMIN(AV_SYNC_THRESHOLD_MAX, delay));
         if (!isnan(diff) && fabs(diff) < *sync->max_frame_duration) {
@@ -121,7 +139,8 @@ double vp_duration(const AvSync *sync, Frame *vp, Frame *nextvp)
 void update_video_pts(AvSync *sync, double pts, int serial)
 {
     set_clock(sync->vidclk, pts, serial);
-    sync_clock_to_slave(sync->extclk, sync->vidclk);
+    sync_clock_to_slave(sync->extclk, av_sync_ext_serial_authority(sync),
+                        sync->vidclk, av_sync_vid_serial_authority(sync));
 }
 
 void av_sync_update_video_pts_if_valid(AvSync *sync, double pts, int serial)
@@ -132,7 +151,7 @@ void av_sync_update_video_pts_if_valid(AvSync *sync, double pts, int serial)
 
 double av_sync_audio_master_diff(const AvSync *sync)
 {
-    return get_clock(sync->audclk) - get_master_clock(sync);
+    return get_clock(sync->audclk, av_sync_aud_serial_authority(sync)) - get_master_clock(sync);
 }
 
 double av_sync_video_master_diff(const AvSync *sync, double video_clock)
@@ -184,7 +203,8 @@ int av_sync_should_clear_frame_filter_delay(double frame_last_filter_delay)
 
 void av_sync_sync_extclk_to_audclk(AvSync *sync)
 {
-    sync_clock_to_slave(sync->extclk, sync->audclk);
+    sync_clock_to_slave(sync->extclk, av_sync_ext_serial_authority(sync),
+                        sync->audclk, av_sync_aud_serial_authority(sync));
 }
 
 void av_sync_seek_reset_extclk(AvSync *sync, int by_bytes, int64_t seek_target)
@@ -216,9 +236,13 @@ void av_sync_toggle_pause(AvSync *sync, int *paused, double *frame_timer, int re
         *frame_timer += av_gettime_relative() / 1000000.0 - clock_get_last_updated(sync->vidclk);
         if (read_pause_return != AVERROR(ENOSYS))
             clock_set_paused(sync->vidclk, 0);
-        set_clock(sync->vidclk, get_clock(sync->vidclk), clock_get_serial(sync->vidclk));
+        set_clock(sync->vidclk,
+                  get_clock(sync->vidclk, av_sync_vid_serial_authority(sync)),
+                  clock_get_serial(sync->vidclk));
     }
-    set_clock(sync->extclk, get_clock(sync->extclk), clock_get_serial(sync->extclk));
+    set_clock(sync->extclk,
+              get_clock(sync->extclk, av_sync_ext_serial_authority(sync)),
+              clock_get_serial(sync->extclk));
     *paused = !*paused;
     clock_set_paused(sync->audclk, *paused);
     clock_set_paused(sync->vidclk, *paused);

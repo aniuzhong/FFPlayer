@@ -606,9 +606,6 @@ VideoState *stream_open(const char *filename,
     is->extclk = clock_create();
     if (!is->vidclk || !is->audclk || !is->extclk)
         goto fail;
-    clock_init_from_packet_queue(is->vidclk, is->videoq);
-    clock_init_from_packet_queue(is->audclk, is->audioq);
-    clock_init_from_clock(is->extclk, is->extclk);
     av_sync_bind(&is->av_sync, is->audclk, is->vidclk, is->extclk,
                  is->audioq, is->videoq, &is->audio_st,
                  &is->audio_stream, &is->video_stream,
