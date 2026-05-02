@@ -224,8 +224,13 @@ void Application::MainLoop()
                 quit_requested_ = true;
         }
 
-        if (quit_requested_ || ffplayer_has_quit_request(player_))
+        if (quit_requested_)
             DoExit();
+
+        if (ffplayer_has_quit_request(player_)) {
+            HandlePlaybackFatalError();
+            continue;
+        }
 
         /* Cursor auto-hide */
         if (!cursor_hidden_ && av_gettime_relative() - cursor_last_shown_ > FFPLAYER_CURSOR_HIDE_DELAY) {
@@ -408,6 +413,22 @@ void Application::ToggleFullScreen()
 void Application::SeekToRatio(float ratio)
 {
     ffplayer_seek_to_ratio(player_, ratio);
+}
+
+void Application::HandlePlaybackFatalError()
+{
+    ffplayer_close(player_);
+    video_renderer_cleanup_textures(&video_renderer_ctx_);
+    video_open_done_ = 0;
+    pending_seek_ratio_ = -1.0f;
+    last_drag_seek_us_ = 0;
+    stable_progress_ratio_ = 0.0f;
+    stable_progress_ready_ = false;
+    RefreshWindowTitle();
+    MessageBoxA(hwnd_,
+                "The media could not be opened or played.\nCheck the URL or network, or see the FFmpeg log.",
+                "ffplay-gui",
+                MB_OK | MB_ICONWARNING);
 }
 
 void Application::StopPlaybackAndReset()

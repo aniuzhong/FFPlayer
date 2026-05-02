@@ -137,8 +137,16 @@ int read_thread(void *arg)
     }
 
     demuxer_set_eof(is->demuxer, 0);
-    demuxer_open_input(is->demuxer, NULL);
-    demuxer_find_stream_info(is->demuxer, NULL);
+    err = demuxer_open_input(is->demuxer, NULL);
+    if (err < 0) {
+        ret = err;
+        goto fail;
+    }
+    err = demuxer_find_stream_info(is->demuxer, NULL);
+    if (err < 0) {
+        ret = err;
+        goto fail;
+    }
     demuxer_io_reset_eof(is->demuxer);
 
     // If not explicitly set a seek mode, auto-detect it based on format flags.

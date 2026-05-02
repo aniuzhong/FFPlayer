@@ -36,6 +36,7 @@ private:
     bool OpenUrlAndPlay();
     [[noreturn]] void DoExit();
     void ToggleFullScreen();
+    void HandlePlaybackFatalError();
     bool InitWindow();
     void InitRenderer();
     void DisplayVideo();
