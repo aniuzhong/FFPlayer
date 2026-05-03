@@ -17,7 +17,7 @@
 #include <libavutil/hwcontext.h>
 #include <libavutil/hwcontext_d3d11va.h>
 
-#include "video_renderer.h"
+#include "render/video_renderer.h"
 
 /* ------------------------------------------------------------------ */
 /* Embedded HLSL shaders (compiled at runtime via D3DCompile)         */

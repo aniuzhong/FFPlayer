@@ -1,5 +1,3 @@
-#include <windows.h>
-
 #include "application.h"
 
 #undef main

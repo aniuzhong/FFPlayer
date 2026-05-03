@@ -215,10 +215,19 @@ target_link_libraries(${_ffplayer_lib_target} PUBLIC SDL2::SDL2)
 # ffplay-gui — D3D11 rendering frontend (Win32 only)
 # ======================================================================
 set(_ffplay_gui_target ffplay-gui)
+set(_ffplay_gui_app_sources
+  ffplay-gui/app/main.cpp
+  ffplay-gui/app/application.cpp
+  ffplay-gui/app/native/win32_file_dialog.cpp
+  ffplay-gui/app/native/win32_window_proc.cpp
+  ffplay-gui/app/ui/ui_util.cpp
+  ffplay-gui/app/ui/ui_main_menu.cpp
+  ffplay-gui/app/ui/ui_startup_defaults.cpp
+  ffplay-gui/app/ui/ui_statistics.cpp
+  ffplay-gui/app/ui/ui_player_controls.cpp)
 add_executable(${_ffplay_gui_target} WIN32
-  ffplay-gui/main.cpp
-  ffplay-gui/application.cpp
-  ffplay-gui/video_renderer.c)
+  ${_ffplay_gui_app_sources}
+  ffplay-gui/app/render/video_renderer.c)
 
 set(_ffplay_gui_default_icon "ffplay-gui/icon/icons8-ffmpeg-48.ico")
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/${_ffplay_gui_default_icon}")
@@ -243,9 +252,13 @@ endif()
 set_target_properties(${_ffplay_gui_target} PROPERTIES
   OUTPUT_NAME "ffplay-gui"
   CXX_STANDARD 20)
+target_compile_definitions(${_ffplay_gui_target} PRIVATE
+  __STDC_CONSTANT_MACROS
+  __STDC_LIMIT_MACROS)
 target_include_directories(${_ffplay_gui_target} PRIVATE
   "${FFPLAY_GEN_DIR}"
   "${CMAKE_SOURCE_DIR}/ffplay-gui"
+  "${CMAKE_SOURCE_DIR}/ffplay-gui/app"
   "${FFMPEG_PREBUILT_ROOT}/include")
 
 # ImGui sources — Win32 + DX11 backends
