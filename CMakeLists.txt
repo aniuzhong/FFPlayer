@@ -147,7 +147,7 @@ if(WIN32)
 endif()
 
 # ======================================================================
-# Third-party dependencies (shared by ffplayer and ffplay-gui)
+# Third-party dependencies (ffplay-gui / ImGui)
 # ======================================================================
 
 FetchContent_Declare(
@@ -161,14 +161,6 @@ FetchContent_GetProperties(imgui SOURCE_DIR IMGUI_BUILD_DIR)
 if(NOT IMGUI_BUILD_DIR OR NOT EXISTS "${IMGUI_BUILD_DIR}/imgui.h")
   message(FATAL_ERROR "Failed to fetch imgui sources from '${IMGUI_BUILD_DIR}'.")
 endif()
-
-FetchContent_Declare(
-  spdlog
-  GIT_REPOSITORY https://github.com/gabime/spdlog.git
-  GIT_TAG v1.x
-  GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(spdlog)
 
 # ======================================================================
 # ffplayer — static library: playback logic, scheduling, sync, demux
@@ -217,10 +209,11 @@ target_link_libraries(${_ffplayer_lib_target} PUBLIC SDL2::SDL2)
 set(_ffplay_gui_target ffplay-gui)
 set(_ffplay_gui_app_sources
   ffplay-gui/app/main.cpp
+  ffplay-gui/app/utils/utf8.c
   ffplay-gui/app/application.cpp
   ffplay-gui/app/native/win32_file_dialog.cpp
   ffplay-gui/app/native/win32_window_proc.cpp
-  ffplay-gui/app/ui/ui_util.cpp
+  ffplay-gui/app/utils/time_format.cpp
   ffplay-gui/app/ui/ui_main_menu.cpp
   ffplay-gui/app/ui/ui_startup_defaults.cpp
   ffplay-gui/app/ui/ui_statistics.cpp
@@ -229,7 +222,7 @@ add_executable(${_ffplay_gui_target} WIN32
   ${_ffplay_gui_app_sources}
   ffplay-gui/app/render/video_renderer.c)
 
-set(_ffplay_gui_default_icon "ffplay-gui/icon/icons8-ffmpeg-48.ico")
+set(_ffplay_gui_default_icon "ffplay-gui/icon/ffmpeg-48.ico")
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/${_ffplay_gui_default_icon}")
   set(_ffplay_gui_default_icon "")
 endif()

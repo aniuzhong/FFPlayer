@@ -18,6 +18,10 @@ extern "C" {
 #include <windows.h>
 #include <SDL.h>
 
+extern "C" {
+#include "utils/utf8.h"
+}
+
 #include "application.h"
 #include "native/win32_file_dialog.h"
 #include "native/win32_window_proc.h"
@@ -73,11 +77,11 @@ static std::wstring CaptionUtf8ToWide(const char *text)
             return out;
     }
 
-    int n = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
-    if (n <= 0)
+    size_t n = utf8_to_wchar(text, 0, nullptr, 0, 0);
+    if (n == 0)
         return out;
-    out.assign(static_cast<size_t>(n), L'\0');
-    if (MultiByteToWideChar(CP_UTF8, 0, text, -1, out.data(), n) <= 0)
+    out.assign(n, L'\0');
+    if (utf8_to_wchar(text, 0, out.data(), n, 0) == 0)
         out.clear();
     else if (!out.empty() && out.back() == L'\0')
         out.pop_back();
@@ -188,7 +192,34 @@ void Application::InitImGui()
     ImGui::StyleColorsDark();
     ImGuiIO &io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.Fonts->AddFontDefault();
+
+    ImFontAtlas *fonts = io.Fonts;
+    fonts->AddFontDefault();
+
+    /* Default atlas has no CJK glyphs → UTF-8 path/input shows '?'. Merge OS fonts for Han chars. */
+    auto merge_cjk_font = [&](const char *relative_font_file, float size_px) -> bool {
+        char pattern[MAX_PATH];
+        char expanded[MAX_PATH];
+        snprintf(pattern, sizeof(pattern), "%%WINDIR%%\\Fonts\\%s", relative_font_file);
+        DWORD n = ExpandEnvironmentStringsA(pattern, expanded, (DWORD)sizeof(expanded));
+        if (n == 0 || n >= sizeof(expanded))
+            return false;
+        if (GetFileAttributesA(expanded) == INVALID_FILE_ATTRIBUTES)
+            return false;
+        ImFontConfig cfg{};
+        cfg.MergeMode = true;
+        cfg.PixelSnapH = true;
+        ImFont *loaded =
+            fonts->AddFontFromFileTTF(expanded, size_px, &cfg, fonts->GetGlyphRangesChineseSimplifiedCommon());
+        return loaded != nullptr;
+    };
+    static const char *kWindowsCjkFonts[] = {"msyh.ttc", "msyhl.ttc", "simhei.ttf", "simsun.ttc"};
+    constexpr float kCjkMergePx = 16.0f;
+    for (const char *rel : kWindowsCjkFonts) {
+        if (merge_cjk_font(rel, kCjkMergePx))
+            break;
+    }
+
     ImGui_ImplWin32_Init(hwnd_);
     ImGui_ImplDX11_Init(video_renderer_ctx_.device, video_renderer_ctx_.context);
     imgui_ready_ = true;
