@@ -809,15 +809,32 @@ static void SeekToRatio(float ratio)
     ffplayer_seek_to_ratio(g_player, ratio);
 }
 
+static void ResetSeekBarUiState()
+{
+    g_pending_seek_ratio = -1.0f;
+    g_last_drag_seek_us = 0;
+    g_stable_progress_ratio = 0.0f;
+    g_stable_progress_ready = false;
+}
+
+static void ApplyVideoRendererSettingsToPlayer()
+{
+    enum AVPixelFormat pix_fmts[32];
+    int nb = video_renderer_get_supported_pixel_formats(&g_video_renderer_ctx, pix_fmts, 32);
+    ffplayer_set_supported_pixel_formats(g_player, pix_fmts, nb);
+    if (AVBufferRef *hw = video_renderer_get_hw_device_ctx(&g_video_renderer_ctx))
+        ffplayer_set_hw_device_ctx(g_player, hw);
+    ffplayer_set_frame_size_callback(g_player, OnFrameSizeChanged, nullptr);
+    ffplayer_set_infinite_buffer(g_player, g_startup_infinite_buffer);
+    ffplayer_set_av_sync_type(g_player, g_startup_av_sync_type);
+}
+
 static void HandlePlaybackFatalError()
 {
     ffplayer_close(g_player);
     video_renderer_cleanup_textures(&g_video_renderer_ctx);
     g_video_open_done = 0;
-    g_pending_seek_ratio = -1.0f;
-    g_last_drag_seek_us = 0;
-    g_stable_progress_ratio = 0.0f;
-    g_stable_progress_ready = false;
+    ResetSeekBarUiState();
     RefreshWindowTitle();
     MessageBoxA(g_hwnd,
                 "The media could not be opened or played.\nCheck the URL or network, or see the FFmpeg log.",
@@ -835,20 +852,10 @@ static void StopPlaybackAndReset()
         DoExit();
     }
 
-    enum AVPixelFormat pix_fmts[32];
-    int nb = video_renderer_get_supported_pixel_formats(&g_video_renderer_ctx, pix_fmts, 32);
-    ffplayer_set_supported_pixel_formats(g_player, pix_fmts, nb);
-    if (AVBufferRef *hw = video_renderer_get_hw_device_ctx(&g_video_renderer_ctx))
-        ffplayer_set_hw_device_ctx(g_player, hw);
-    ffplayer_set_frame_size_callback(g_player, OnFrameSizeChanged, nullptr);
-    ffplayer_set_infinite_buffer(g_player, g_startup_infinite_buffer);
-    ffplayer_set_av_sync_type(g_player, g_startup_av_sync_type);
+    ApplyVideoRendererSettingsToPlayer();
 
     g_video_open_done = 0;
-    g_pending_seek_ratio = -1.0f;
-    g_last_drag_seek_us = 0;
-    g_stable_progress_ratio = 0.0f;
-    g_stable_progress_ready = false;
+    ResetSeekBarUiState();
     g_stats_has_video_frame = false;
     g_stats_pipeline_zero_copy = false;
     g_stats_video_pix_fmt = AV_PIX_FMT_NONE;
@@ -986,7 +993,6 @@ static bool OpenMediaAndPlay(const char *source, const char *error_message)
     ffplayer_toggle_pause(g_player);
     ffplayer_request_refresh(g_player);
     g_stable_progress_ratio = 0.0f;
-    g_stable_progress_ready = false;
     RefreshWindowTitle();
     return true;
 }
@@ -1070,16 +1076,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     SetWindowTitleUtf8(g_hwnd, "ffplay-gui");
 
     g_player = ffplayer_create(&g_audio_device);
-    {
-        enum AVPixelFormat pix_fmts[32];
-        int nb = video_renderer_get_supported_pixel_formats(&g_video_renderer_ctx, pix_fmts, 32);
-        ffplayer_set_supported_pixel_formats(g_player, pix_fmts, nb);
-    }
-    if (AVBufferRef *hw = video_renderer_get_hw_device_ctx(&g_video_renderer_ctx))
-        ffplayer_set_hw_device_ctx(g_player, hw);
-    ffplayer_set_frame_size_callback(g_player, OnFrameSizeChanged, nullptr);
-    ffplayer_set_infinite_buffer(g_player, g_startup_infinite_buffer);
-    ffplayer_set_av_sync_type(g_player, g_startup_av_sync_type);
+    ApplyVideoRendererSettingsToPlayer();
     InitImGui();
 
     MainLoop();
