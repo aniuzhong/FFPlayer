@@ -194,7 +194,13 @@ void Application::InitImGui()
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     ImFontAtlas *fonts = io.Fonts;
-    fonts->AddFontDefault();
+    /* ImGui 1.92+: merged fonts (MergeMode + explicit size) require the first font to use an explicit
+     * reference size. Bare AddFontDefault() sets ImFontFlags_ImplicitRefSize and triggers a Debug assert
+     * in imgui_draw when merging with AddFontFromFileTTF(..., size_px, ...). */
+    constexpr float kUIFontPx = 13.0f;
+    ImFontConfig base_font_cfg{};
+    base_font_cfg.SizePixels = kUIFontPx;
+    fonts->AddFontDefault(&base_font_cfg);
 
     /* Default atlas has no CJK glyphs → UTF-8 path/input shows '?'. Merge OS fonts for Han chars. */
     auto merge_cjk_font = [&](const char *relative_font_file, float size_px) -> bool {
@@ -214,9 +220,8 @@ void Application::InitImGui()
         return loaded != nullptr;
     };
     static const char *kWindowsCjkFonts[] = {"msyh.ttc", "msyhl.ttc", "simhei.ttf", "simsun.ttc"};
-    constexpr float kCjkMergePx = 16.0f;
     for (const char *rel : kWindowsCjkFonts) {
-        if (merge_cjk_font(rel, kCjkMergePx))
+        if (merge_cjk_font(rel, kUIFontPx))
             break;
     }
 
