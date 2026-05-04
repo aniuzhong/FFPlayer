@@ -207,7 +207,9 @@ target_link_libraries(${_ffplayer_lib_target} PUBLIC SDL2::SDL2)
 # ffplay-gui — D3D11 rendering frontend (Win32 only)
 # ======================================================================
 set(_ffplay_gui_target ffplay-gui)
-set(_ffplay_gui_app_sources ffplay-gui/app/main.cpp)
+set(_ffplay_gui_app_sources
+  ffplay-gui/app/main.cpp
+  ffplay-gui/app/utils/tinyfiledialogs.c)
 add_executable(${_ffplay_gui_target} WIN32
   ${_ffplay_gui_app_sources}
   ffplay-gui/app/render/video_renderer.c)
@@ -263,7 +265,7 @@ endif()
 
 target_link_libraries(${_ffplay_gui_target} PRIVATE
   ${_ffplayer_lib_target}
-  d3d11 dxgi dxguid d3dcompiler shell32 comdlg32)
+  d3d11 dxgi dxguid d3dcompiler shell32 comdlg32 ole32)
 
 if(WIN32)
   set(_out_gui "$<TARGET_FILE_DIR:${_ffplay_gui_target}>")

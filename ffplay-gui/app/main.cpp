@@ -2,25 +2,38 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cmath>
+#include <optional>
 #include <string>
+#include <thread>
+
+using namespace std::chrono_literals;
 
 extern "C" {
-#include <libavutil/common.h>
 #include <libavutil/pixdesc.h>
-#include <libavutil/time.h>
 #include <libavformat/avformat.h>
 #include <libavdevice/avdevice.h>
 }
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
 
 #include "imgui.h"
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx11.h"
 
 #include <windows.h>
-#include <commdlg.h>
 #include <SDL.h>
+
+extern "C" {
+#include "utils/tinyfiledialogs.h"
+}
 
 #ifdef __cplusplus
 extern "C" {
@@ -132,36 +145,38 @@ static std::string FormatDuration(double seconds)
     return std::string(buf);
 }
 
-static bool Win32PickMediaFileUtf8(HWND owner, std::string &out_utf8_path)
+static bool PickMediaFileUtf8(std::string &out_utf8_path)
 {
     out_utf8_path.clear();
 
-    wchar_t file_name[MAX_PATH] = {};
-    OPENFILENAMEW ofn = {};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = owner;
-    ofn.lpstrFile = file_name;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrFilter =
-        L"Media Files\0*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.flv;*.webm;*.mp3;*.wav;*.flac;*.aac;*.ogg;*.m4a\0"
-        L"All Files\0*.*\0";
-    ofn.nFilterIndex = 1;
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    ofn.lpstrTitle = L"Open media file";
+    static char const *const kFilterPatterns[] = {
+        "*.mp4",
+        "*.mkv",
+        "*.avi",
+        "*.mov",
+        "*.wmv",
+        "*.flv",
+        "*.webm",
+        "*.mp3",
+        "*.wav",
+        "*.flac",
+        "*.aac",
+        "*.ogg",
+        "*.m4a",
+        "*.*",
+    };
 
-    if (!GetOpenFileNameW(&ofn))
+    char *path = tinyfd_openFileDialog(
+        "Open media file",
+        "",
+        static_cast<int>(sizeof(kFilterPatterns) / sizeof(kFilterPatterns[0])),
+        kFilterPatterns,
+        "Media files",
+        0);
+    if (!path || !path[0])
         return false;
 
-    const int nbytes =
-        WideCharToMultiByte(CP_UTF8, 0, file_name, -1, nullptr, 0, nullptr, nullptr);
-    if (nbytes <= 0)
-        return false;
-
-    out_utf8_path.resize(static_cast<size_t>(nbytes - 1));
-    if (WideCharToMultiByte(CP_UTF8, 0, file_name, -1, out_utf8_path.data(), nbytes, nullptr,
-                            nullptr) != nbytes)
-        return false;
-
+    out_utf8_path.assign(path);
     return true;
 }
 
@@ -171,7 +186,7 @@ void DispatchKeyDown(WPARAM wParam);
 
 static HWND g_hwnd = nullptr;
 static AudioDevice g_audio_device = {};
-static int64_t g_cursor_last_shown = 0;
+static std::optional<std::chrono::steady_clock::time_point> g_cursor_last_active;
 static int g_cursor_hidden = 0;
 static int g_is_full_screen = 0;
 static WINDOWPLACEMENT g_wp_before_fullscreen = {};
@@ -181,7 +196,7 @@ static int g_video_open_done = 0;
 static bool g_open_dialog_active = false;
 static bool g_imgui_ready = false;
 static float g_pending_seek_ratio = -1.0f;
-static int64_t g_last_drag_seek_us = 0;
+static std::optional<std::chrono::steady_clock::time_point> g_last_drag_seek;
 static float g_stable_progress_ratio = 0.0f;
 static bool g_stable_progress_ready = false;
 static char g_open_url_input[1024] = {};
@@ -189,7 +204,7 @@ static bool g_show_statistics_window = false;
 static float g_render_fps = 0.0f;
 static float g_render_frame_time_ms = 0.0f;
 static int g_render_fps_frame_count = 0;
-static int64_t g_render_fps_last_sample_us = 0;
+static std::optional<std::chrono::steady_clock::time_point> g_render_fps_sample;
 static bool g_stats_has_video_frame = false;
 static bool g_stats_pipeline_zero_copy = false;
 static AVPixelFormat g_stats_video_pix_fmt = AV_PIX_FMT_NONE;
@@ -251,7 +266,7 @@ static void ui_note_mouse_activity_show_cursor()
         ShowCursor(TRUE);
         g_cursor_hidden = 0;
     }
-    g_cursor_last_shown = av_gettime_relative();
+    g_cursor_last_active = std::chrono::steady_clock::now();
 }
 
 [[noreturn]] static void ui_quit_application()
@@ -368,13 +383,14 @@ LRESULT CALLBACK ApplicationWin32WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
     case WM_LBUTTONDOWN: {
         if (ImGui::GetIO().WantCaptureMouse)
             break;
-        static int64_t last_click = 0;
-        if (av_gettime_relative() - last_click <= 500000) {
+        static std::optional<std::chrono::steady_clock::time_point> last_click;
+        const auto now = std::chrono::steady_clock::now();
+        if (last_click && (now - *last_click <= 500ms)) {
             ToggleFullScreen();
             ui_player_request_refresh();
-            last_click = 0;
+            last_click.reset();
         } else {
-            last_click = av_gettime_relative();
+            last_click = now;
         }
         ui_note_mouse_activity_show_cursor();
         return 0;
@@ -526,9 +542,9 @@ static void UiDrawStartupDefaults(float main_menu_bar_bottom)
     const ImGuiStyle &st = ImGui::GetStyle();
     float inf_combo_w = 0.0f;
     for (int i = 0; i < IM_ARRAYSIZE(inf_labels); ++i)
-        inf_combo_w = FFMAX(inf_combo_w, ImGui::CalcTextSize(inf_labels[i], nullptr, true).x);
+        inf_combo_w = std::max(inf_combo_w, ImGui::CalcTextSize(inf_labels[i], nullptr, true).x);
     inf_combo_w += st.FramePadding.x * 2.0f + ImGui::GetFrameHeight();
-    inf_combo_w = FFMIN(inf_combo_w, ImGui::GetContentRegionAvail().x);
+    inf_combo_w = std::min(inf_combo_w, ImGui::GetContentRegionAvail().x);
     ImGui::SetNextItemWidth(inf_combo_w);
     if (ImGui::Combo("##infbuf", &inf_idx, inf_labels, IM_ARRAYSIZE(inf_labels))) {
         infbuf = (inf_idx == 0) ? -1 : (inf_idx == 1) ? 0 : 1;
@@ -551,9 +567,9 @@ static void UiDrawStartupDefaults(float main_menu_bar_bottom)
     };
     float sync_combo_w = 0.0f;
     for (int i = 0; i < IM_ARRAYSIZE(sync_labels); ++i)
-        sync_combo_w = FFMAX(sync_combo_w, ImGui::CalcTextSize(sync_labels[i], nullptr, true).x);
+        sync_combo_w = std::max(sync_combo_w, ImGui::CalcTextSize(sync_labels[i], nullptr, true).x);
     sync_combo_w += st.FramePadding.x * 2.0f + ImGui::GetFrameHeight();
-    sync_combo_w = FFMIN(sync_combo_w, ImGui::GetContentRegionAvail().x);
+    sync_combo_w = std::min(sync_combo_w, ImGui::GetContentRegionAvail().x);
     ImGui::SetNextItemWidth(sync_combo_w);
     if (ImGui::Combo("##sync", &sync_idx, sync_labels, IM_ARRAYSIZE(sync_labels))) {
         g_startup_av_sync_type = sync_idx;
@@ -620,7 +636,7 @@ static bool UiDrawPlayerControls()
 
         if (has_known_duration) {
             current_sec = ffplayer_get_position(pl);
-            current_sec = FFMAX(0.0, FFMIN(current_sec, duration_sec));
+            current_sec = std::max(0.0, std::min(current_sec, duration_sec));
             progress = duration_sec > 0.0 ? (float)(current_sec / duration_sec) : 0.0f;
 
             if (ffplayer_is_eof(pl) && progress > 0.90f)
@@ -647,7 +663,6 @@ static bool UiDrawPlayerControls()
     float &pending = g_pending_seek_ratio;
     float &stable_r = g_stable_progress_ratio;
     bool &stable_ok = g_stable_progress_ready;
-    int64_t &drag_us = g_last_drag_seek_us;
 
     if (using_stable_progress && pending < 0.0f) {
         if (!stable_ok) {
@@ -656,7 +671,7 @@ static bool UiDrawPlayerControls()
         } else {
             float delta = progress - stable_r;
             if (delta >= -0.003f) {
-                stable_r = FFMAX(stable_r, progress);
+                stable_r = std::max(stable_r, progress);
             } else if (delta <= -0.08f) {
                 stable_r = progress;
             }
@@ -686,7 +701,7 @@ static bool UiDrawPlayerControls()
         ImGui::SameLine();
         bool open_url_clicked = ImGui::Button("Open URL");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(FFMAX(220.0f, ImGui::GetContentRegionAvail().x));
+        ImGui::SetNextItemWidth(std::max(220.0f, ImGui::GetContentRegionAvail().x));
         bool url_entered = ImGui::InputTextWithHint(
             "##open_url",
             "https://... / rtsp://... / file path",
@@ -700,7 +715,7 @@ static bool UiDrawPlayerControls()
         float play_w = ImGui::CalcTextSize(play_text.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
         float stop_w = ImGui::CalcTextSize("Stop").x + ImGui::GetStyle().FramePadding.x * 2.0f;
         float time_w = ImGui::CalcTextSize(time_text.c_str()).x;
-        float volume_w = FFMIN(110.0f, FFMAX(72.0f, avail_w * 0.22f));
+        float volume_w = std::min(110.0f, std::max(72.0f, avail_w * 0.22f));
         constexpr float min_timeline_w = 80.0f;
         bool hide_time_text = false;
         float needed_w = play_w + margin + stop_w + margin + time_w + margin + min_timeline_w + margin + volume_w;
@@ -710,10 +725,10 @@ static bool UiDrawPlayerControls()
             needed_w = play_w + margin + stop_w + margin + min_timeline_w + margin + volume_w;
         }
         if (avail_w < needed_w) {
-            volume_w = FFMAX(58.0f, avail_w * 0.18f);
+            volume_w = std::max(58.0f, avail_w * 0.18f);
         }
 
-        float timeline_w = FFMAX(
+        float timeline_w = std::max(
             min_timeline_w,
             avail_w - play_w - margin - stop_w - margin - (hide_time_text ? 0.0f : (time_w + margin)) - margin - volume_w);
 
@@ -736,10 +751,10 @@ static bool UiDrawPlayerControls()
             if (ImGui::SliderFloat("##timeline", &slider_value, 0.0f, 1.0f, "")) {
                 pending = slider_value;
                 if (ImGui::IsItemActive()) {
-                    int64_t now_us = av_gettime_relative();
-                    if (drag_us == 0 || now_us - drag_us >= 40000) {
+                    const auto now = std::chrono::steady_clock::now();
+                    if (!g_last_drag_seek || now - *g_last_drag_seek >= 40ms) {
                         SeekToRatio(pending);
-                        drag_us = now_us;
+                        g_last_drag_seek = now;
                     }
                 }
             }
@@ -748,7 +763,7 @@ static bool UiDrawPlayerControls()
                 stable_r = pending;
                 stable_ok = true;
                 pending = -1.0f;
-                drag_us = 0;
+                g_last_drag_seek.reset();
             }
             if (!can_seek)
                 ImGui::EndDisabled();
@@ -812,7 +827,7 @@ static void SeekToRatio(float ratio)
 static void ResetSeekBarUiState()
 {
     g_pending_seek_ratio = -1.0f;
-    g_last_drag_seek_us = 0;
+    g_last_drag_seek.reset();
     g_stable_progress_ratio = 0.0f;
     g_stable_progress_ready = false;
 }
@@ -864,9 +879,9 @@ static void StopPlaybackAndReset()
 
 static void UpdateRenderFps()
 {
-    const int64_t now_us = av_gettime_relative();
-    if (g_render_fps_last_sample_us <= 0) {
-        g_render_fps_last_sample_us = now_us;
+    const auto now = std::chrono::steady_clock::now();
+    if (!g_render_fps_sample) {
+        g_render_fps_sample = now;
         g_render_fps_frame_count = 0;
         g_render_fps = 0.0f;
         g_render_frame_time_ms = 0.0f;
@@ -874,12 +889,13 @@ static void UpdateRenderFps()
     }
 
     ++g_render_fps_frame_count;
-    const int64_t elapsed_us = now_us - g_render_fps_last_sample_us;
-    if (elapsed_us >= 500000) {
-        g_render_fps = (float)g_render_fps_frame_count * 1000000.0f / (float)elapsed_us;
+    const auto elapsed = now - *g_render_fps_sample;
+    if (elapsed >= 500ms) {
+        const float elapsed_sec = std::chrono::duration<float>(elapsed).count();
+        g_render_fps = elapsed_sec > 0.0f ? (float)g_render_fps_frame_count / elapsed_sec : 0.0f;
         g_render_frame_time_ms = g_render_fps > 0.0f ? (1000.0f / g_render_fps) : 0.0f;
         g_render_fps_frame_count = 0;
-        g_render_fps_last_sample_us = now_us;
+        g_render_fps_sample = now;
     }
 }
 
@@ -951,7 +967,7 @@ static bool OpenFileDialogAndPlay()
     g_open_dialog_active = true;
 
     std::string path;
-    if (!Win32PickMediaFileUtf8(g_hwnd, path)) {
+    if (!PickMediaFileUtf8(path)) {
         g_open_dialog_active = false;
         return false;
     }
@@ -1031,7 +1047,8 @@ static void MainLoop()
             continue;
         }
 
-        if (!g_cursor_hidden && av_gettime_relative() - g_cursor_last_shown > FFPLAYER_CURSOR_HIDE_DELAY) {
+        if (!g_cursor_hidden && g_cursor_last_active &&
+            std::chrono::steady_clock::now() - *g_cursor_last_active > std::chrono::microseconds(FFPLAYER_CURSOR_HIDE_DELAY)) {
             ShowCursor(FALSE);
             g_cursor_hidden = 1;
         }
@@ -1047,7 +1064,7 @@ static void MainLoop()
         video_renderer_present(&g_video_renderer_ctx);
 
         if (remaining_time > 0.0)
-            av_usleep((int64_t)(remaining_time * 1000000.0));
+            std::this_thread::sleep_for(std::chrono::duration<double>(remaining_time));
     }
 }
 
