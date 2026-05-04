@@ -209,7 +209,8 @@ target_link_libraries(${_ffplayer_lib_target} PUBLIC SDL2::SDL2)
 set(_ffplay_gui_target ffplay-gui)
 set(_ffplay_gui_app_sources
   ffplay-gui/app/main.cpp
-  ffplay-gui/app/utils/tinyfiledialogs.c)
+  ffplay-gui/app/utils/tinyfiledialogs.c
+  ffplay-gui/app/utils/utf8.c)
 add_executable(${_ffplay_gui_target} WIN32
   ${_ffplay_gui_app_sources}
   ffplay-gui/app/render/video_renderer.c)

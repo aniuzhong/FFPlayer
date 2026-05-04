@@ -1,4 +1,3 @@
-#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -33,6 +32,7 @@ extern "C" {
 
 extern "C" {
 #include "utils/tinyfiledialogs.h"
+#include "utils/utf8.h"
 }
 
 #ifdef __cplusplus
@@ -50,68 +50,8 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace {
 
-constexpr size_t kTitleUtf16MaxBytes = 4096;
 constexpr int kInitialDefaultWidth = 640;
 constexpr int kInitialDefaultHeight = 480;
-constexpr float kSeekIntervalSeconds = 10.0f;
-
-static bool LooksUtf16LeBom(const unsigned char *p)
-{
-    return p[0] == 0xFF && p[1] == 0xFE;
-}
-
-static bool LooksUtf16LeBmpPrefix(const unsigned char *r)
-{
-    return r[0] != 0 && r[1] == 0 && r[2] != 0 && r[3] == 0;
-}
-
-static bool Utf16LeToWideCaption(const unsigned char *data, size_t max_bytes, std::wstring *out)
-{
-    out->clear();
-    size_t i = 0;
-    while (i + 1 < max_bytes) {
-        uint16_t wc =
-            static_cast<uint16_t>(data[i]) | (static_cast<uint16_t>(data[i + 1]) << 8);
-        i += 2;
-        if (wc == 0)
-            break;
-        out->push_back(static_cast<wchar_t>(wc));
-    }
-    return !out->empty();
-}
-
-static bool Utf8CaptionToWide(const char *utf8, std::wstring *out)
-{
-    out->clear();
-    if (!utf8 || !utf8[0])
-        return false;
-    const int nwchars =
-        MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
-    if (nwchars <= 0)
-        return false;
-    out->resize(static_cast<size_t>(nwchars - 1));
-    return MultiByteToWideChar(CP_UTF8, 0, utf8, -1, out->data(), nwchars) == nwchars;
-}
-
-static std::wstring CaptionUtf8ToWide(const char *text)
-{
-    std::wstring out;
-    if (!text || !text[0])
-        return out;
-
-    const unsigned char *raw = reinterpret_cast<const unsigned char *>(text);
-    if (LooksUtf16LeBom(raw)) {
-        if (Utf16LeToWideCaption(raw + 2, kTitleUtf16MaxBytes - 2, &out))
-            return out;
-    } else if (LooksUtf16LeBmpPrefix(raw)) {
-        if (Utf16LeToWideCaption(raw, kTitleUtf16MaxBytes, &out))
-            return out;
-    }
-
-    if (!Utf8CaptionToWide(text, &out))
-        out.clear();
-    return out;
-}
 
 static void SetWindowTitleUtf8(HWND hwnd, const char *text)
 {
@@ -121,14 +61,21 @@ static void SetWindowTitleUtf8(HWND hwnd, const char *text)
         SetWindowTextW(hwnd, L"ffplay-gui");
         return;
     }
-    std::wstring w = CaptionUtf8ToWide(text);
-    SetWindowTextW(hwnd, !w.empty() ? w.c_str() : L"ffplay-gui");
-}
 
-static void sigterm_handler(int sig)
-{
-    (void)sig;
-    exit(123);
+    /* OBS util/utf8.c utf8_to_wchar (Windows path): UTF-8 BOM strip + CP_UTF8 */
+    std::wstring w;
+    const size_t nc = utf8_to_wchar(text, 0, nullptr, 0, 0);
+    if (nc != 0) {
+        w.resize(nc);
+        if (utf8_to_wchar(text, 0, w.data(), nc, 0) != 0) {
+            if (!w.empty() && w.back() == L'\0')
+                w.pop_back();
+        } else {
+            w.clear();
+        }
+    }
+
+    SetWindowTextW(hwnd, !w.empty() ? w.c_str() : L"ffplay-gui");
 }
 
 static std::string FormatDuration(double seconds)
@@ -180,8 +127,6 @@ static bool PickMediaFileUtf8(std::string &out_utf8_path)
     return true;
 }
 
-void DispatchKeyDown(WPARAM wParam);
-
 } /* namespace */
 
 static HWND g_hwnd = nullptr;
@@ -221,7 +166,7 @@ static void RenderImGui();
 static bool OpenMediaAndPlay(const char *source, const char *error_message);
 static bool OpenFileDialogAndPlay();
 static bool OpenUrlAndPlay();
-[[noreturn]] static void DoExit();
+static void DoExit();
 static void ToggleFullScreen();
 static void HandlePlaybackFatalError();
 static bool InitWindow();
@@ -269,103 +214,6 @@ static void ui_note_mouse_activity_show_cursor()
     g_cursor_last_active = std::chrono::steady_clock::now();
 }
 
-[[noreturn]] static void ui_quit_application()
-{
-    DoExit();
-}
-
-namespace {
-
-void DispatchKeyDown(WPARAM wParam)
-{
-    if (wParam == VK_ESCAPE || wParam == 'Q') {
-        ui_quit_application();
-        return;
-    }
-    if (ImGui::GetIO().WantCaptureKeyboard)
-        return;
-    if (wParam == 'O') {
-        OpenFileDialogAndPlay();
-        return;
-    }
-    if (wParam == 'F') {
-        ToggleFullScreen();
-        ui_player_request_refresh();
-        return;
-    }
-
-    FFPlayer *pl = g_player;
-    if (!ffplayer_is_open(pl) || !ffplayer_is_video_open(pl))
-        return;
-
-    double incr;
-    switch (wParam) {
-    case 'P':
-    case VK_SPACE:
-        ffplayer_toggle_pause(pl);
-        break;
-    case 'M':
-        ffplayer_toggle_mute(pl);
-        break;
-    case '0':
-    case VK_MULTIPLY:
-        ffplayer_adjust_volume_step(pl, 1, FFPLAYER_VOLUME_STEP);
-        break;
-    case '9':
-    case VK_DIVIDE:
-        ffplayer_adjust_volume_step(pl, -1, FFPLAYER_VOLUME_STEP);
-        break;
-    case 'S':
-        ffplayer_step_frame(pl);
-        break;
-    case 'A':
-        ffplayer_cycle_audio_track(pl);
-        break;
-    case 'V':
-        ffplayer_cycle_video_track(pl);
-        break;
-    case 'C':
-        ffplayer_cycle_all_tracks(pl);
-        break;
-    case 'T':
-        ffplayer_cycle_subtitle_track(pl);
-        break;
-    case 'W':
-        ffplayer_toggle_audio_display(pl);
-        break;
-    case VK_PRIOR:
-        if (!ffplayer_has_chapters(pl)) {
-            incr = 600.0;
-            goto do_seek;
-        }
-        ffplayer_seek_chapter(pl, 1);
-        break;
-    case VK_NEXT:
-        if (!ffplayer_has_chapters(pl)) {
-            incr = -600.0;
-            goto do_seek;
-        }
-        ffplayer_seek_chapter(pl, -1);
-        break;
-    case VK_LEFT:
-        incr = -kSeekIntervalSeconds;
-        goto do_seek;
-    case VK_RIGHT:
-        incr = kSeekIntervalSeconds;
-        goto do_seek;
-    case VK_UP:
-        incr = 60.0;
-        goto do_seek;
-    case VK_DOWN:
-        incr = -60.0;
-do_seek:
-        ffplayer_seek_relative(pl, incr);
-        break;
-    }
-}
-
-} /* namespace */
-
 LRESULT CALLBACK ApplicationWin32WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
@@ -376,9 +224,6 @@ LRESULT CALLBACK ApplicationWin32WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
     switch (msg) {
     case WM_SIZE:
         win32_on_client_resize(wParam, LOWORD(lParam), HIWORD(lParam));
-        return 0;
-    case WM_KEYDOWN:
-        DispatchKeyDown(wParam);
         return 0;
     case WM_LBUTTONDOWN: {
         if (ImGui::GetIO().WantCaptureMouse)
@@ -1013,7 +858,7 @@ static bool OpenMediaAndPlay(const char *source, const char *error_message)
     return true;
 }
 
-[[noreturn]] static void DoExit()
+static void DoExit()
 {
     video_renderer_cleanup_textures(&g_video_renderer_ctx);
     ffplayer_free(&g_player);
@@ -1068,15 +913,10 @@ static void MainLoop()
     }
 }
 
-#undef main
-
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
     avdevice_register_all();
     avformat_network_init();
-
-    signal(SIGINT, sigterm_handler);
-    signal(SIGTERM, sigterm_handler);
 
     if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
         fprintf(stderr, "Could not initialize SDL audio - %s\n", SDL_GetError());
