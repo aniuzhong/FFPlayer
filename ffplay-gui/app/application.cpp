@@ -18,10 +18,6 @@ extern "C" {
 #include <windows.h>
 #include <SDL.h>
 
-extern "C" {
-#include "utils/utf8.h"
-}
-
 #include "application.h"
 #include "native/win32_file_dialog.h"
 #include "native/win32_window_proc.h"
@@ -59,6 +55,23 @@ static bool Utf16LeToWideCaption(const unsigned char *data, size_t max_bytes, st
 }
 
 /**
+ * UTF-8 NUL-terminated caption → UTF-16 for SetWindowTextW.
+ * Uses cbMultiByte=-1 so sizing/conversion include the terminator (avoid strlen-only WideChar paths).
+ */
+static bool Utf8CaptionToWide(const char *utf8, std::wstring *out)
+{
+    out->clear();
+    if (!utf8 || !utf8[0])
+        return false;
+    const int nwchars =
+        MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
+    if (nwchars <= 0)
+        return false;
+    out->resize(static_cast<size_t>(nwchars - 1));
+    return MultiByteToWideChar(CP_UTF8, 0, utf8, -1, out->data(), nwchars) == nwchars;
+}
+
+/**
  * NUL-terminated caption: UTF-8 -> UTF-16 for SetWindowTextW, or UTF-16LE blob heuristics.
  * (Former TextToAsciiWindowTitle forced non-ASCII to '?', which breaks Chinese paths in the title bar.)
  */
@@ -77,14 +90,8 @@ static std::wstring CaptionUtf8ToWide(const char *text)
             return out;
     }
 
-    size_t n = utf8_to_wchar(text, 0, nullptr, 0, 0);
-    if (n == 0)
-        return out;
-    out.assign(n, L'\0');
-    if (utf8_to_wchar(text, 0, out.data(), n, 0) == 0)
+    if (!Utf8CaptionToWide(text, &out))
         out.clear();
-    else if (!out.empty() && out.back() == L'\0')
-        out.pop_back();
     return out;
 }
 

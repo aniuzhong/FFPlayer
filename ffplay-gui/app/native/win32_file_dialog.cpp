@@ -1,11 +1,7 @@
 #include "native/win32_file_dialog.h"
 
-extern "C" {
-#include "utils/utf8.h"
-}
-
+#include <windows.h>
 #include <commdlg.h>
-#include <vector>
 
 bool Win32PickMediaFileUtf8(HWND owner, std::string &out_utf8_path)
 {
@@ -27,15 +23,19 @@ bool Win32PickMediaFileUtf8(HWND owner, std::string &out_utf8_path)
     if (!GetOpenFileNameW(&ofn))
         return false;
 
-    const size_t utf8_len = wchar_to_utf8(file_name, 0, nullptr, 0, 0);
-    if (utf8_len == 0)
+    /*
+     * cchWideChar=-1: NUL-terminated wide path; WideCharToMultiByte sizes/converts including UTF-8 NUL.
+     * Use explicit byte counts for std::string — never strlen(assign(char*)) on the conversion buffer.
+     */
+    const int nbytes =
+        WideCharToMultiByte(CP_UTF8, 0, file_name, -1, nullptr, 0, nullptr, nullptr);
+    if (nbytes <= 0)
         return false;
 
-    std::vector<char> utf8(utf8_len, 0);
-    if (wchar_to_utf8(file_name, 0, utf8.data(), utf8_len, 0) == 0)
+    out_utf8_path.resize(static_cast<size_t>(nbytes - 1));
+    if (WideCharToMultiByte(CP_UTF8, 0, file_name, -1, out_utf8_path.data(), nbytes, nullptr,
+                            nullptr) != nbytes)
         return false;
-
-    out_utf8_path.assign(utf8.data());
 
     return true;
 }

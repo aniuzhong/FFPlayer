@@ -209,7 +209,6 @@ target_link_libraries(${_ffplayer_lib_target} PUBLIC SDL2::SDL2)
 set(_ffplay_gui_target ffplay-gui)
 set(_ffplay_gui_app_sources
   ffplay-gui/app/main.cpp
-  ffplay-gui/app/utils/utf8.c
   ffplay-gui/app/application.cpp
   ffplay-gui/app/native/win32_file_dialog.cpp
   ffplay-gui/app/native/win32_window_proc.cpp
