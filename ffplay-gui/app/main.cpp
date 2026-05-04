@@ -81,7 +81,7 @@ void set_window_title_utf8(HWND hwnd, const char *text)
 
 std::string format_duration_for_ui(double seconds)
 {
-    int total = (int)(seconds >= 0.0 ? seconds : 0.0);
+    int total = (int)(seconds >= 0.0 ? seconds + 0.5 : 0.0);
     int h = total / 3600;
     int m = (total % 3600) / 60;
     int s = total % 60;
@@ -154,8 +154,6 @@ bool g_show_statistics_window = false;
 /* Seek bar / timeline UI */
 float g_pending_seek_ratio = -1.0f;
 std::optional<std::chrono::steady_clock::time_point> g_last_drag_seek;
-float g_stable_progress_ratio = 0.0f;
-bool g_stable_progress_ready = false;
 
 /* Statistics panel snapshot */
 float g_render_fps = 0.0f;
@@ -493,7 +491,6 @@ bool ui_draw_player_controls_bar()
     bool has_known_duration = false;
     bool can_approx_seek = false;
     bool can_seek = false;
-    bool using_stable_progress = false;
     bool stop_requested = false;
 
     FFPlayer *pl = g_player;
@@ -514,7 +511,6 @@ bool ui_draw_player_controls_bar()
 
             if (!std::isfinite(progress))
                 progress = 0.0f;
-            using_stable_progress = true;
             time_text = format_duration_for_ui(current_sec) + " / " + format_duration_for_ui(duration_sec);
         } else if (can_approx_seek) {
             float bp = ffplayer_get_byte_progress(pl);
@@ -527,27 +523,8 @@ bool ui_draw_player_controls_bar()
 
         play_text = ffplayer_is_paused(pl) ? "Play " : "Pause";
     }
-    if (!ffplayer_is_open(pl))
-        g_stable_progress_ready = false;
-
     float &pending = g_pending_seek_ratio;
-    float &stable_r = g_stable_progress_ratio;
-    bool &stable_ok = g_stable_progress_ready;
 
-    if (using_stable_progress && pending < 0.0f) {
-        if (!stable_ok) {
-            stable_r = progress;
-            stable_ok = true;
-        } else {
-            float delta = progress - stable_r;
-            if (delta >= -0.003f) {
-                stable_r = std::max(stable_r, progress);
-            } else if (delta <= -0.08f) {
-                stable_r = progress;
-            }
-        }
-        progress = stable_r;
-    }
     if (!std::isfinite(progress))
         progress = 0.0f;
     if (ffplayer_is_open(pl))
@@ -630,8 +607,6 @@ bool ui_draw_player_controls_bar()
             }
             if (pending >= 0.0f && ImGui::IsItemDeactivatedAfterEdit()) {
                 ffplayer_seek_to_ratio(g_player, pending);
-                stable_r = pending;
-                stable_ok = true;
                 pending = -1.0f;
                 g_last_drag_seek.reset();
             }
@@ -701,8 +676,6 @@ void reset_seek_bar_ui_state()
 {
     g_pending_seek_ratio = -1.0f;
     g_last_drag_seek.reset();
-    g_stable_progress_ratio = 0.0f;
-    g_stable_progress_ready = false;
 }
 
 void apply_renderer_settings_to_player()
@@ -880,7 +853,6 @@ bool open_media_source_and_play(const char *source, const char *error_message)
     ffplayer_close(g_player);
     video_renderer_cleanup_textures(&g_video_renderer_ctx);
     g_video_open_done = 0;
-    g_stable_progress_ready = false;
 
     if (ffplayer_open(g_player, source) < 0) {
         MessageBoxA(g_hwnd, error_message, "Open failed", MB_ICONERROR);
@@ -889,7 +861,6 @@ bool open_media_source_and_play(const char *source, const char *error_message)
     }
     ffplayer_toggle_pause(g_player);
     ffplayer_request_refresh(g_player);
-    g_stable_progress_ratio = 0.0f;
     update_main_window_title();
     return true;
 }
