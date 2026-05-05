@@ -200,7 +200,7 @@ void shutdown_imgui_dx11();
 void on_player_video_layout_changed(void *opaque, int width, int height, AVRational sar)
 {
     (void)opaque;
-    video_renderer_set_default_window_size(&g_video_renderer_ctx,
+    g_video_renderer_ctx.set_default_window_size(
                                            g_video_renderer_ctx.default_width,
                                            g_video_renderer_ctx.default_height,
                                            width, height, sar);
@@ -212,9 +212,9 @@ void on_player_video_layout_changed(void *opaque, int width, int height, AVRatio
 
 void win32_handle_client_resize(WPARAM size_type, int client_w, int client_h)
 {
-    if (!g_video_renderer_ctx.device || size_type == SIZE_MINIMIZED)
+    if (!g_video_renderer_ctx.is_device_created() || size_type == SIZE_MINIMIZED)
         return;
-    video_renderer_resize(&g_video_renderer_ctx, client_w, client_h);
+    g_video_renderer_ctx.resize(client_w, client_h);
     if (g_player) {
         ffplayer_handle_window_size_changed(g_player, client_w, client_h);
         ffplayer_request_refresh(g_player);
@@ -301,7 +301,7 @@ void init_gui_video_renderer()
 {
     g_video_renderer_ctx.default_width = kInitialDefaultWidth;
     g_video_renderer_ctx.default_height = kInitialDefaultHeight;
-    if (video_renderer_init(&g_video_renderer_ctx, g_hwnd) < 0) {
+    if (g_video_renderer_ctx.init(g_hwnd) < 0) {
         fprintf(stderr, "Failed to initialize renderer\n");
         shutdown_application_and_exit();
     }
@@ -344,7 +344,7 @@ void init_imgui_dx11()
     }
 
     ImGui_ImplWin32_Init(g_hwnd);
-    ImGui_ImplDX11_Init(g_video_renderer_ctx.device, g_video_renderer_ctx.context);
+    ImGui_ImplDX11_Init(g_video_renderer_ctx.d3d_device(), g_video_renderer_ctx.d3d_context());
     g_imgui_ready = true;
 }
 
@@ -683,9 +683,9 @@ void reset_seek_bar_ui_state()
 void apply_renderer_settings_to_player()
 {
     enum AVPixelFormat pix_fmts[32];
-    int nb = video_renderer_get_supported_pixel_formats(&g_video_renderer_ctx, pix_fmts, 32);
+    int nb = g_video_renderer_ctx.get_supported_pixel_formats(pix_fmts, 32);
     ffplayer_set_supported_pixel_formats(g_player, pix_fmts, nb);
-    if (AVBufferRef *hw = video_renderer_get_hw_device_ctx(&g_video_renderer_ctx))
+    if (AVBufferRef *hw = g_video_renderer_ctx.get_hw_device_ctx())
         ffplayer_set_hw_device_ctx(g_player, hw);
     ffplayer_set_frame_size_callback(g_player, on_player_video_layout_changed, nullptr);
     ffplayer_set_infinite_buffer(g_player, g_startup_infinite_buffer);
@@ -695,7 +695,7 @@ void apply_renderer_settings_to_player()
 void handle_fatal_playback_error()
 {
     ffplayer_close(g_player);
-    video_renderer_cleanup_textures(&g_video_renderer_ctx);
+    g_video_renderer_ctx.cleanup_textures();
     g_video_open_done = 0;
     reset_seek_bar_ui_state();
     update_main_window_title();
@@ -707,7 +707,7 @@ void handle_fatal_playback_error()
 
 bool stop_playback_and_recreate_player()
 {
-    video_renderer_cleanup_textures(&g_video_renderer_ctx);
+    g_video_renderer_ctx.cleanup_textures();
 
     FFPlayer *new_player = ffplayer_create(&g_audio_device);
     if (new_player) {
@@ -776,7 +776,7 @@ void draw_current_video_frame()
     int win_h = rc.bottom - rc.top;
 
     if (!g_video_open_done) {
-        video_renderer_open(&g_video_renderer_ctx, &win_w, &win_h);
+        g_video_renderer_ctx.open(&win_w, &win_h);
         ffplayer_set_window_size(g_player, win_w, win_h);
         g_video_open_done = 1;
     }
@@ -787,7 +787,7 @@ void draw_current_video_frame()
         AVSubtitle *subtitle = ffplayer_get_subtitle(g_player);
         if (frame) {
             update_pipeline_stats_from_av_frame(frame);
-            video_renderer_draw_video(&g_video_renderer_ctx, frame, subtitle, 0, 0, win_w, win_h);
+            g_video_renderer_ctx.draw_video(frame, subtitle, 0, 0, win_w, win_h);
         } else {
             g_stats_has_video_frame = false;
         }
@@ -856,7 +856,7 @@ bool open_media_source_and_play(const char *source, const char *error_message)
         return false;
 
     ffplayer_close(g_player);
-    video_renderer_cleanup_textures(&g_video_renderer_ctx);
+    g_video_renderer_ctx.cleanup_textures();
     g_video_open_done = 0;
 
     if (ffplayer_open(g_player, source) < 0) {
@@ -872,10 +872,10 @@ bool open_media_source_and_play(const char *source, const char *error_message)
 
 void shutdown_application_and_exit()
 {
-    video_renderer_cleanup_textures(&g_video_renderer_ctx);
+    g_video_renderer_ctx.cleanup_textures();
     ffplayer_free(&g_player);
     shutdown_imgui_dx11();
-    video_renderer_shutdown(&g_video_renderer_ctx);
+    g_video_renderer_ctx.shutdown();
     if (g_hwnd) {
         DestroyWindow(g_hwnd);
         g_hwnd = nullptr;
@@ -914,11 +914,11 @@ void run_application_main_loop()
         if (ffplayer_needs_refresh(g_player))
             ffplayer_refresh(g_player, &remaining_time);
 
-        video_renderer_clear(&g_video_renderer_ctx);
+        g_video_renderer_ctx.clear();
         if (ffplayer_is_open(g_player))
             draw_current_video_frame();
         render_imgui_frame();
-        video_renderer_present(&g_video_renderer_ctx);
+        g_video_renderer_ctx.present();
 
         if (remaining_time > 0.0)
             std::this_thread::sleep_for(std::chrono::duration<double>(remaining_time));

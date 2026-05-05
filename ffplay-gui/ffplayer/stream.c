@@ -791,7 +791,7 @@ int stream_component_open(VideoState *is, int stream_index)
     case AVMEDIA_TYPE_VIDEO:
         is->video_stream = stream_index;
         is->video_st = ic->streams[stream_index];
-        is->video_decoder_uses_hw = avctx->hw_device_ctx ? 1 : 0;
+        is->video_decoder_uses_hw = avctx->hw_frames_ctx ? 1 : 0;
         is->hw_fallback_triggered = 0;
 
         if ((ret = decoder_init(&is->viddec, avctx, is->videoq, is->demuxer.continue_read_thread)) < 0)

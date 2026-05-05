@@ -213,7 +213,7 @@ set(_ffplay_gui_app_sources
   ffplay-gui/app/utils/utf8.c)
 add_executable(${_ffplay_gui_target} WIN32
   ${_ffplay_gui_app_sources}
-  ffplay-gui/app/render/video_renderer.c)
+  ffplay-gui/app/render/video_renderer.cpp)
 
 set(_ffplay_gui_default_icon "ffplay-gui/icon/ffmpeg-48.ico")
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/${_ffplay_gui_default_icon}")
