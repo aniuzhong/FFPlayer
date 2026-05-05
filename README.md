@@ -16,4 +16,6 @@ This project focuses on two:
 
 2. Adding a UI layer (currently based on Dear ImGui).
 
+![Screenshot](./images/v0.1.5.jpg)
+
 See `ffplay-gui/README.md` for more info.
