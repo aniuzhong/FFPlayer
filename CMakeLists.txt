@@ -209,17 +209,11 @@ target_link_libraries(${_ffplayer_lib_target} PUBLIC SDL2::SDL2)
 set(_ffplay_gui_target ffplay-gui)
 set(_ffplay_gui_app_sources
   ffplay-gui/app/main.cpp
-  ffplay-gui/app/application.cpp
-  ffplay-gui/app/native/win32_file_dialog.cpp
-  ffplay-gui/app/native/win32_window_proc.cpp
-  ffplay-gui/app/utils/time_format.cpp
-  ffplay-gui/app/ui/ui_main_menu.cpp
-  ffplay-gui/app/ui/ui_startup_defaults.cpp
-  ffplay-gui/app/ui/ui_statistics.cpp
-  ffplay-gui/app/ui/ui_player_controls.cpp)
+  ffplay-gui/app/utils/tinyfiledialogs.c
+  ffplay-gui/app/utils/utf8.c)
 add_executable(${_ffplay_gui_target} WIN32
   ${_ffplay_gui_app_sources}
-  ffplay-gui/app/render/video_renderer.c)
+  ffplay-gui/app/render/video_renderer.cpp)
 
 set(_ffplay_gui_default_icon "ffplay-gui/icon/ffmpeg-48.ico")
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/${_ffplay_gui_default_icon}")
@@ -272,7 +266,7 @@ endif()
 
 target_link_libraries(${_ffplay_gui_target} PRIVATE
   ${_ffplayer_lib_target}
-  d3d11 dxgi dxguid d3dcompiler shell32 comdlg32)
+  d3d11 dxgi dxguid d3dcompiler shell32 comdlg32 ole32)
 
 if(WIN32)
   set(_out_gui "$<TARGET_FILE_DIR:${_ffplay_gui_target}>")

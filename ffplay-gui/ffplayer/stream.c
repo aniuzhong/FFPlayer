@@ -361,8 +361,13 @@ double stream_get_position(const VideoState *is)
     if (!is)
         return 0.0;
     pos = get_master_clock(&is->av_sync);
-    if (isnan(pos))
-        return 0.0;
+    if (isnan(pos)) {
+        /* After seek, clock serial may temporarily mismatch the packet
+         * queue serial, making get_master_clock() return NAN. Use the
+         * last seek target instead of falling back to 0, which would
+         * cause the UI progress bar to jump back to zero. */
+        return (double)is->seek_pos / AV_TIME_BASE;
+    }
     AVFormatContext *ic = is->demuxer.ic;
     if (ic && ic->start_time != AV_NOPTS_VALUE)
         pos -= ic->start_time / (double)AV_TIME_BASE;
@@ -786,7 +791,7 @@ int stream_component_open(VideoState *is, int stream_index)
     case AVMEDIA_TYPE_VIDEO:
         is->video_stream = stream_index;
         is->video_st = ic->streams[stream_index];
-        is->video_decoder_uses_hw = avctx->hw_device_ctx ? 1 : 0;
+        is->video_decoder_uses_hw = avctx->hw_frames_ctx ? 1 : 0;
         is->hw_fallback_triggered = 0;
 
         if ((ret = decoder_init(&is->viddec, avctx, is->videoq, is->demuxer.continue_read_thread)) < 0)
