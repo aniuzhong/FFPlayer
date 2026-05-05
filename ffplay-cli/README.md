@@ -1,114 +1,100 @@
-# **ffplay-cli** - 独立编译 ffplay.exe
+# ffplay-cli — standalone ffplay.exe
 
-- [**ffplay-cli** - 独立编译 ffplay.exe](#ffplay-cli---独立编译-ffplayexe)
-  - [依赖与环境](#依赖与环境)
-  - [自编译 ffplay.exe 与 gyan 预编译包输出对齐](#自编译-ffplayexe-与-gyan-预编译包输出对齐)
-    - [gyan 声明的 commit 在哪里](#gyan-声明的-commit-在哪里)
-    - [与 gyan 原装 `ffplay -version` 文本一致（Configure 阶段）](#与-gyan-原装-ffplay--version-文本一致configure-阶段)
-    - [`config_components.h`（仅影响少数 `#if`）](#config_componentsh仅影响少数-if)
-    - [与 gyan 包内「库侧输出」一致（链接与运行时）](#与-gyan-包内库侧输出一致链接与运行时)
-  - [CMake 自动下载预编译包](#cmake-自动下载预编译包)
-  - [配置、编译](#配置编译)
+Builds `ffplay.exe` **without compiling FFmpeg from source**.
+Uses Gyan's FFmpeg 8.1 prebuilt shared libraries + SDL2 with CMake/MSVC.
 
-在 **不编译整套 FFmpeg 库** 的前提下，仅编译 **ffplay.exe**：使用 **gyan 提供的 FFmpeg 8.1 预编译共享库**（头文件 + 导入库 + 运行时 DLL）与 **SDL2**，在 Windows 上用 CMake/MSVC 生成可执行文件。
+> This exists to bootstrap the ffplay.c refactoring — the initial setup is
+> tedious, so it's documented here.
 
-> 这个工程主要是为了重构 ffplay.c 打基础，配置一次相当繁琐。
+## Dependencies
 
-## 依赖与环境
+1. Gyan FFmpeg 8.1 shared bundle (include/ lib/ bin/)
+2. SDL2 MSVC dev package
+3. CMake + Visual Studio 2022
+4. Upstream FFmpeg repo (for syncing fftools sources)
 
-1. **gyan FFmpeg 8.1 shared 完整目录**
-2. **SDL2** MSVC 开发包
-3. **CMake**、**Visual Studio 2022**（或改用 Ninja + 其他工具链并调整链接方式）  
-4. 官方 FFmpeg 仓库
+## Aligning with Gyan's prebuilt
 
-## 自编译 ffplay.exe 与 gyan 预编译包输出对齐
+### Identifying the Gyan commit
 
-### gyan 声明的 commit 在哪里
+Gyan's `README.txt` lists the source commit:
 
-gyan 压缩包根目录的 **`README.txt`** 中有一行 **Source Code**，指向官方仓库的某次提交，例如：
-
-```text
-Source Code: https://github.com/FFmpeg/FFmpeg/commit/9047fa1b08
+```
+Source Code: https://github.com/FFmpeg/FFmpeg/commit/<hash>
 ```
 
-即 **gyan 宣称** 该预编译所对应的 FFmpeg 源码版本。
-
-在用于对照的 FFmpeg 仓库根目录执行（将 `<id>` 换成当前 `README.txt` 里解析出的哈希）：
+Checkout that commit in the upstream repo:
 
 ```powershell
 git fetch origin
-git checkout <id>
+git checkout <hash>
+git rev-parse HEAD   # verify match
 ```
 
-确认：
+### Syncing sources
 
-```bash
-git rev-parse HEAD
-```
+With FFmpeg checked out at the matching commit:
 
-应与 README 中的提交一致（短哈希时为前缀一致）。
+1. Copy `ffmpeg/fftools/` and `ffmpeg/compat/` into `ffplay-cli/`.
+2. Copy `ffmpeg/libavutil/getenv_utf8.h`, `wchar_filename.h` into `ffplay-cli/shim/include/libavutil/`.
+   Keep the local include adaptations (`mem.h` → `libavutil/mem.h`; `getenv_utf8.h` uses `"wchar_filename.h"`).
 
-在 **`ffmpeg` 已 checkout 到与 gyan 一致的 commit** 之后，
+### Matching `ffplay -version` output
 
-1. 将 **`ffmpeg/fftools`** 与 **`ffmpeg/compat`** 中相关文件 **同步拷贝到 `ffplay-cli/`**。
+`cmake/FFmpegGyan.cmake` → `ffplay_generate_config()` generates `build/generated/config.h`:
 
-2. 将 `ffmpeg/libavutil/getenv_utf8.h`、`wchar_filename.h` 拷入 `ffplay-cli/shim/include/libavutil/`，并保留本仓库中的 **include 适配**（`mem.h` → `libavutil/mem.h`；`getenv_utf8.h` 内对 `wchar_filename` 使用同目录 `"wchar_filename.h"`）。
+| Macro | Source | Purpose |
+|-------|--------|---------|
+| `FFMPEG_VERSION` | `include/libavutil/ffversion.h` | Match Gyan's version string (e.g. `8.1-full_build-www.gyan.dev`) |
+| `FFMPEG_CONFIGURATION` | Extracted from `bin/ffplay.exe -hide_banner -version` via regex | Match Gyan's `configuration:` line so `opt_common.c` doesn't warn about mismatch |
+| `CC_IDENT` | Same `-version` output (`built with ...`) | Match compiler identity line |
+| License/feature macros | Hardcoded in `config.h.in` (GPLv3 + full features; `CONFIG_LIBPLACEBO=0`) | Satisfy fftools compile paths |
 
-### 与 gyan 原装 `ffplay -version` 文本一致（Configure 阶段）
+### `config_components.h`
 
-在 **CMake 配置** 时，`cmake/FFmpegGyan.cmake` 的 **`ffplay_generate_config()`** 会生成 `build/generated/config.h`（由 `config.h.in` 展开）。
+Generated from `config_components.h.in`. Provides `CONFIG_RTSP_DEMUXER`, `CONFIG_MMSH_PROTOCOL` etc. consistent with Gyan's full build, so local `#if` guards match what the DLLs actually provide.
 
-| 宏 | 来源 | 作用 |
-|----|------|------|
-| **`FFMPEG_VERSION`** | 预编译包内 **`include/libavutil/ffversion.h`** | 与 gyan 包内版本字符串一致（如 `8.1-full_build-www.gyan.dev`）。 |
-| **`FFMPEG_CONFIGURATION`** | **优先**执行 **`FFMPEG_PREBUILT_ROOT/bin/ffplay.exe -hide_banner -version`**，从输出中用正则截取 **`configuration:`** 后的整行，经 C 转义写入宏。 | 与 **gyan 原装 ffplay** 及 **各 `libav*.dll` 内 `*_configuration()` 返回的 configure 字符串** 一致，避免 `opt_common.c` 里与 DLL 比较时出现 **configuration mismatch** 警告。 |
-| **`CC_IDENT`** | 同上条 **`ffplay.exe -version`** 输出中的 **`built with ...`** 行。 | 与 gyan 原装 `-version` 中「编译器标识」一行一致。 |
-| **许可证 / 组件类 `CONFIG_*`、`HAVE_*`** | `config.h.in` 中按 **GPLv3 + full 特性** 思路写死（如 `CONFIG_GPLV3`、`CONFIG_LIBPLACEBO=0` 等）。 | 满足 fftools 编译与授权分支；`CONFIG_LIBPLACEBO=0` 用于避免再链 **libplacebo**（与「只依赖预编译包 + SDL2」一致）。 |
+### Linking & runtime
 
-### `config_components.h`（仅影响少数 `#if`）
+| Aspect | Detail |
+|--------|--------|
+| **Link** | Import libs from `FFMPEG_PREBUILT_ROOT/lib` (avutil, avcodec, avformat, avfilter, avdevice, swscale, swresample) |
+| **`-version` library lines** | Come from the loaded DLLs at runtime — identical to Gyan's `ffplay.exe` with the same DLLs |
+| **POST_BUILD** | Copies `SDL2.dll` + `FFMPEG_PREBUILT_ROOT/bin/*.dll` next to the exe |
 
-`config_components.h.in` 生成 **`config_components.h`**，为 `ffplay.c` 中 **`CONFIG_RTSP_DEMUXER` / `CONFIG_MMSH_PROTOCOL`** 等与 gyan full 一致的宏，避免与预编译里已启用的协议/解复用行为冲突。其余组件仍由 **DLL 在运行时** 提供。
+## Automated download
 
-### 与 gyan 包内「库侧输出」一致（链接与运行时）
+With `FFPLAY_FETCH_PREBUILT_DEPS=ON` (default), CMake downloads missing dependencies
+at configure time:
 
-| 方法 | 说明 |
-|------|------|
-| **链接** | 链接 **`FFMPEG_PREBUILT_ROOT/lib`** 下与 gyan 相同的导入库（`avutil`、`avcodec`、`avformat`、`avfilter`、`avdevice`、`swscale`、`swresample`）。 |
-| **`-version` 里各库版本行** | 来自 **已加载 DLL** 的 `lib*_version()`，与使用 gyan 原装 `ffplay.exe` 且 **同一套 `bin` 下 DLL** 时一致。 |
-| **POST_BUILD** | 将 **`SDL2.dll`** 及 **`FFMPEG_PREBUILT_ROOT/bin/*.dll`**（若存在）复制到 **`ffplay.exe` 同目录**，保证实际加载的仍是 gyan 包内那一套运行时，避免混用其它路径的旧 DLL。 |
-
-## CMake 自动下载预编译包
-
-默认 **`FFPLAY_FETCH_PREBUILT_DEPS=ON`**：若缺少下列目录中的关键文件，CMake **配置阶段**会从网上下载并解压到 **`THIRD_PARTY_DIR`**（与手动解压后的布局一致）：
-
-| 组件 | 默认 URL（可用 CMake 缓存变量覆盖） |
-|------|--------------------------------------|
+| Component | URL (overridable via cache var) |
+|-----------|---------------------------------|
 | FFmpeg | `FFPLAY_FFMPEG_PREBUILT_URL` → [ffmpeg-8.1-full_build-shared.zip](https://github.com/GyanD/codexffmpeg/releases/download/8.1/ffmpeg-8.1-full_build-shared.zip) |
 | SDL2 | `FFPLAY_SDL2_DEV_ZIP_URL` → [SDL2-devel-2.32.10-VC.zip](https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-devel-2.32.10-VC.zip) |
 
-- 下载文件缓存在 **`third_party/.cache/`**，已存在则不会重复下载。  
-- **FFmpeg 与 SDL2** 均为 **zip**，使用 **`cmake -E tar xf`** 解压，**不依赖 7-Zip**。  
-- 若希望完全离线、只用本地已解压目录：配置时加 **`-DFFPLAY_FETCH_PREBUILT_DEPS=OFF`**。  
-- 若仍使用旧版目录名 **`SDL2-2.32.4`**：`-DFFPLAY_SDL2_ROOT_DIRNAME=SDL2-2.32.4` 并自行放入对应开发包。
+- Cache in `third_party/.cache/`, skipped if present.
+- Both are zip files, extracted with `cmake -E tar xf` (no 7-Zip needed).
 
-## 配置、编译
+For offline builds: `-DFFPLAY_FETCH_PREBUILT_DEPS=OFF`.
+
+## Build
 
 ```powershell
 cmake -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 ```
 
-编译后生成 `build/Release/ffplay.exe`（及复制到同目录的运行时 DLL）。
+Output: `build/Release/ffplay.exe` + runtime DLLs.
 
-可选缓存变量（见 `CMakeLists.txt`）：
+### Key cache variables
 
-| 变量 | 含义 |
-|------|------|
-| `THIRD_PARTY_DIR` | 默认 `third_party` |
-| `FFPLAY_FETCH_PREBUILT_DEPS` | 缺依赖时是否自动下载解压（默认 `ON`） |
-| `FFPLAY_FFMPEG_PREBUILT_URL` | FFmpeg `.zip` 下载地址 |
-| `FFPLAY_SDL2_DEV_ZIP_URL` | SDL2 MSVC `.zip` 下载地址 |
-| `FFPLAY_SDL2_ROOT_DIRNAME` | `THIRD_PARTY_DIR` 下 SDL2 文件夹名（默认 `SDL2-2.32.10`） |
-| `FFMPEG_PREBUILT_ROOT` | gyan 解压根目录 |
-| `FFMPEG_LIB_DIR` | 一般为 `.../lib` |
-| `SDL2_DIR` | 若未放在默认路径，指向含 `SDL2Config.cmake` 的目录 |
+| Variable | Default |
+|----------|---------|
+| `THIRD_PARTY_DIR` | `third_party` |
+| `FFPLAY_FETCH_PREBUILT_DEPS` | `ON` |
+| `FFPLAY_FFMPEG_PREBUILT_URL` | .../ffmpeg-8.1-full_build-shared.zip |
+| `FFPLAY_SDL2_DEV_ZIP_URL` | .../SDL2-devel-2.32.10-VC.zip |
+| `FFPLAY_SDL2_ROOT_DIRNAME` | `SDL2-2.32.10` |
+| `FFMPEG_PREBUILT_ROOT` | `third_party/ffmpeg-8.1-full_build-shared` |
+| `FFMPEG_LIB_DIR` | `$(FFMPEG_PREBUILT_ROOT)/lib` |
+| `SDL2_DIR` | auto-detected |
