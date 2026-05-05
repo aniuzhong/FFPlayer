@@ -176,7 +176,7 @@ int g_startup_av_sync_type = FFPLAYER_AV_SYNC_AUDIO_MASTER;
 // -----------------------------------------------------------------------------
 
 void update_main_window_title();
-void stop_playback_and_recreate_player();
+bool stop_playback_and_recreate_player();
 void update_fps_overlay_stats();
 void update_pipeline_stats_from_av_frame(const AVFrame *frame);
 void render_imgui_frame();
@@ -215,9 +215,10 @@ void win32_handle_client_resize(WPARAM size_type, int client_w, int client_h)
     if (!g_video_renderer_ctx.device || size_type == SIZE_MINIMIZED)
         return;
     video_renderer_resize(&g_video_renderer_ctx, client_w, client_h);
-    if (g_player)
+    if (g_player) {
         ffplayer_handle_window_size_changed(g_player, client_w, client_h);
-    ffplayer_request_refresh(g_player);
+        ffplayer_request_refresh(g_player);
+    }
 }
 
 void ui_show_cursor_on_input_activity()
@@ -247,7 +248,8 @@ LRESULT CALLBACK win32_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         const auto now = std::chrono::steady_clock::now();
         if (last_click && (now - *last_click <= 500ms)) {
             toggle_full_screen();
-            ffplayer_request_refresh(g_player);
+            if (g_player)
+                ffplayer_request_refresh(g_player);
             last_click.reset();
         } else {
             last_click = now;
@@ -703,17 +705,19 @@ void handle_fatal_playback_error()
                 MB_OK | MB_ICONWARNING);
 }
 
-void stop_playback_and_recreate_player()
+bool stop_playback_and_recreate_player()
 {
     video_renderer_cleanup_textures(&g_video_renderer_ctx);
-    ffplayer_free(&g_player);
-    g_player = ffplayer_create(&g_audio_device);
-    if (!g_player) {
-        MessageBoxA(g_hwnd, "Failed to recreate player.", "Stop failed", MB_ICONERROR);
-        shutdown_application_and_exit();
-    }
 
-    apply_renderer_settings_to_player();
+    FFPlayer *new_player = ffplayer_create(&g_audio_device);
+    if (new_player) {
+        ffplayer_free(&g_player);
+        g_player = new_player;
+        apply_renderer_settings_to_player();
+    } else {
+        ffplayer_close(g_player);
+        MessageBoxA(g_hwnd, "Failed to recreate player.", "Stop failed", MB_ICONERROR);
+    }
 
     g_video_open_done = 0;
     reset_seek_bar_ui_state();
@@ -721,6 +725,7 @@ void stop_playback_and_recreate_player()
     g_stats_pipeline_zero_copy = false;
     g_stats_video_pix_fmt = AV_PIX_FMT_NONE;
     update_main_window_title();
+    return new_player != nullptr;
 }
 
 // -----------------------------------------------------------------------------
